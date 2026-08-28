@@ -25,9 +25,32 @@ info "检查环境"
 
 [ "$(uname -s)" = "Linux" ] || die "这个脚本只支持 Linux。"
 
-if ! command -v apt-get >/dev/null 2>&1; then
-    die "没找到 apt-get。这个脚本针对 Debian / Ubuntu；其他发行版请手动装好 Docker 后直接跑 docker compose up -d --build。"
+# 识别发行版家族。Oracle Cloud 的免费机器默认是 Oracle Linux（dnf），
+# 不是 Debian 系，所以不能只认 apt-get。
+DISTRO_NAME="unknown"
+if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    DISTRO_NAME="${PRETTY_NAME:-${NAME:-unknown}}"
+    case " ${ID:-} ${ID_LIKE:-} " in
+        *" debian "*|*" ubuntu "*)                     PKG_FAMILY=debian ;;
+        *" rhel "*|*" fedora "*|*" centos "*|*" ol "*) PKG_FAMILY=rhel ;;
+        *) PKG_FAMILY="" ;;
+    esac
 fi
+# os-release 认不出来就退回看有哪个包管理器
+if [ -z "${PKG_FAMILY:-}" ]; then
+    if   command -v apt-get >/dev/null 2>&1; then PKG_FAMILY=debian
+    elif command -v dnf     >/dev/null 2>&1; then PKG_FAMILY=rhel
+    elif command -v yum     >/dev/null 2>&1; then PKG_FAMILY=rhel
+    else die "认不出这个发行版（$DISTRO_NAME），也没有 apt/dnf/yum。请手动装好 Docker 后直接跑 docker compose up -d --build。"
+    fi
+fi
+
+if [ "$PKG_FAMILY" = "rhel" ]; then
+    DNF="$(command -v dnf || command -v yum)"
+fi
+ok "系统 $DISTRO_NAME（$PKG_FAMILY 系）"
 
 ARCH="$(uname -m)"
 case "$ARCH" in
@@ -65,11 +88,35 @@ fi
 
 info "准备 Docker"
 
+pkg_install() {
+    case "$PKG_FAMILY" in
+        debian) $SUDO apt-get install -y -qq "$@" ;;
+        rhel)   $SUDO "$DNF" install -y -q "$@" ;;
+    esac
+}
+
 if command -v docker >/dev/null 2>&1; then
     ok "Docker 已安装（$(docker --version | cut -d, -f1)）"
-else
-    warn "未安装，开始装（用 Docker 官方脚本，几分钟）"
+elif [ "$PKG_FAMILY" = "debian" ]; then
+    warn "未安装，用 Docker 官方脚本装（几分钟）"
     curl -fsSL https://get.docker.com | $SUDO sh
+    ok "Docker 装好了"
+else
+    # get.docker.com 不支持 Oracle Linux，得手动挂 CentOS 的 docker-ce 仓库。
+    # 另外 OL8/9 自带 podman 的 docker 兼容层，会和 docker-ce 抢文件，先挪开。
+    warn "未安装。Oracle/RHEL 系要走 docker-ce 仓库（官方脚本不支持这类系统）"
+    $SUDO "$DNF" install -y -q dnf-plugins-core 2>/dev/null \
+        || $SUDO "$DNF" install -y -q yum-utils
+    if rpm -q podman-docker >/dev/null 2>&1; then
+        warn "检测到 podman-docker（自带的 docker 兼容层），移除以免冲突"
+        $SUDO "$DNF" remove -y -q podman-docker
+    fi
+    $SUDO "$DNF" config-manager --add-repo \
+        https://download.docker.com/linux/centos/docker-ce.repo 2>/dev/null \
+        || $SUDO "$DNF" config-manager addrepo --overwrite \
+             --from-repofile=https://download.docker.com/linux/centos/docker-ce.repo
+    $SUDO "$DNF" install -y -q --allowerasing \
+        docker-ce docker-ce-cli containerd.io docker-compose-plugin
     ok "Docker 装好了"
 fi
 
@@ -83,8 +130,8 @@ elif command -v docker-compose >/dev/null 2>&1; then
     COMPOSE_CMD=(docker-compose)
 else
     warn "没有 compose 插件，安装 docker-compose-plugin"
-    $SUDO apt-get update -qq
-    $SUDO apt-get install -y -qq docker-compose-plugin
+    [ "$PKG_FAMILY" = "debian" ] && $SUDO apt-get update -qq
+    pkg_install docker-compose-plugin
     COMPOSE_CMD=(docker compose)
 fi
 COMPOSE_SHOWN="${COMPOSE_CMD[*]}"
@@ -101,8 +148,9 @@ fi
 
 info "取代码"
 
-if command -v git >/dev/null 2>&1; then :; else
-    $SUDO apt-get update -qq && $SUDO apt-get install -y -qq git
+if ! command -v git >/dev/null 2>&1; then
+    [ "$PKG_FAMILY" = "debian" ] && $SUDO apt-get update -qq
+    pkg_install git
 fi
 
 if [ -d "$DIR/.git" ]; then
