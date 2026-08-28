@@ -336,3 +336,102 @@ def test_index_privacy_copy_matches_deployment_mode(monkeypatch) -> None:
 
     for html in (local, public):
         assert "<!--SUB_NOTE-->" not in html and "<!--FOOT_NOTE-->" not in html
+
+
+# ------------------------------------------------- 修复质量与颜色覆盖
+
+def _solid_badge(bg, fg, box=(430, 150, 660, 182), size=(700, 200)):
+    """一块纯色底 + 一个角标，走一遍 JPEG 贴近真实导出。"""
+    W, H = size
+    image = Image.new("RGB", (W, H), bg)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle([box[0] + 8, box[1] + 9, box[0] + 150, box[1] + 22], fill=fg)
+    draw.ellipse([box[0] + 170, box[1] + 8, box[0] + 196, box[1] + 26], fill=fg)
+    array = np.asarray(image)
+    import cv2
+    ok, buffer = cv2.imencode(".jpg", cv2.cvtColor(array, cv2.COLOR_RGB2BGR),
+                              [cv2.IMWRITE_JPEG_QUALITY, 88])
+    assert ok
+    return cv2.cvtColor(cv2.imdecode(buffer, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+
+
+@pytest.mark.parametrize("bg, fg", [
+    ((198, 198, 198), (60, 62, 70)),      # 深灰字 / 浅灰底，NotebookLM 属于这类
+    ((252, 252, 252), (26, 90, 220)),     # 蓝字 / 白底
+    ((200, 200, 200), (210, 45, 40)),     # 红字 / 浅灰底
+])
+def test_solid_backdrop_is_filled_exactly_not_inpainted(bg, fg) -> None:
+    """纯色底上不该用 inpaint。
+
+    TELEA 是从边界向内推测纹理的算法，在纯色区会拉出规则条纹——幅度只有几个灰阶，
+    但因为有结构，人眼一眼就看得出「这块被涂过」。纯色底直接铺底色才是正解。
+    """
+    from unwatermark import _repair, box_to_mask
+    box = (430, 150, 660, 182)
+    rgb = _solid_badge(bg, fg)
+    mask = box_to_mask((200, 700), box, dilate=2)
+    inside = mask > 0
+
+    filled = _repair(rgb, mask, radius=4)                 # 默认启用纯色铺底
+    inpainted = _repair(rgb, mask, radius=4, ring=0)       # ring=0 强制走旧路径
+
+    truth = np.array(bg, float)
+    filled_dev = np.abs(filled[inside].astype(float) - truth).max()
+    inpaint_dev = np.abs(inpainted[inside].astype(float) - truth).max()
+
+    assert filled_dev <= 2, f"铺底后仍偏离底色 {filled_dev}"
+    assert filled_dev < inpaint_dev, "纯色底上铺底色没有比 inpaint 更干净"
+    # 铺进去的必须是一个常量，不能有残留结构
+    assert len(np.unique(filled[inside].reshape(-1, 3), axis=0)) == 1
+
+
+def test_textured_backdrop_still_uses_inpaint() -> None:
+    """底色有纹理时不能乱铺——那会糊掉背景，必须退回 inpaint。"""
+    from unwatermark import _flat_backdrop, box_to_mask
+    rng = np.random.default_rng(11)
+    noisy = rng.integers(0, 255, (200, 700, 3), dtype=np.uint8)
+    mask = box_to_mask((200, 700), (430, 150, 660, 182), dilate=2)
+    assert _flat_backdrop(noisy, mask, ring=6, tolerance=4.0) is None
+
+
+def _color_deck(path: Path, badge_rgb, pages: int = 6) -> None:
+    """整页位图 + 固定角标；底色浅灰，正文逐页变化。"""
+    import cv2
+    W, H = 800, 1000
+    document = fitz.open()
+    rng = np.random.default_rng(5)
+    for index in range(pages):
+        array = np.full((H, W, 3), 200, np.uint8) - rng.integers(0, 4, (H, W, 3), dtype=np.uint8)
+        image = Image.fromarray(array)
+        draw = ImageDraw.Draw(image)
+        for row in range(14):
+            y = 70 + row * 60
+            draw.rectangle([60, y, 60 + 200 + (index * 43 + row * 71) % 380, y + 15],
+                           fill=(70, 74, 88))
+        draw.rectangle([W - 220, H - 64, W - 90, H - 46], fill=badge_rgb)
+        ok, buffer = cv2.imencode(".jpg", cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR),
+                                  [cv2.IMWRITE_JPEG_QUALITY, 90])
+        page = document.new_page(width=W * 0.72, height=H * 0.72)
+        page.insert_image(page.rect, stream=buffer.tobytes())
+    document.save(path, deflate=True)
+    document.close()
+
+
+@pytest.mark.parametrize("name, badge", [
+    ("深色字标", (55, 58, 66)),
+    ("等亮度橙色", (255, 190, 120)),   # 灰度 201 ≈ 底色 200，亮度上等于隐形
+    ("等亮度青色", (120, 215, 205)),
+    ("比底更浅的灰", (232, 232, 232)),
+    ("蓝紫色", (108, 99, 255)),
+])
+def test_badges_of_any_color_are_found(tmp_path: Path, name, badge) -> None:
+    """角标不一定是黑的。等亮度的彩色角标躲得过前两路投票，必须有色度那一路兜住。"""
+    source = tmp_path / "deck.pdf"
+    _color_deck(source, badge)
+
+    result = clean_pdf(source, tmp_path / "out.pdf")
+
+    assert result.success, f"{name} 未被检出：{result.message}"
+    x0, y0, x1, y1 = result.box
+    assert 560 <= x0 <= 600 and 700 <= x1 <= 730, f"{name} 定位偏了：{result.box}"
+    assert 920 <= y0 <= 945 and 945 <= y1 <= 970, f"{name} 定位偏了：{result.box}"

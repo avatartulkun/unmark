@@ -39,12 +39,22 @@ class CleanOptions:
     """暗像素阈值 0-255；灰度低于它算「暗」。"""
     contrast_delta: int = 18
     """回退策略用：像素与其局部背景的灰度差达到多少算「浮在背景之上」。"""
+    chroma_delta: int = 12
+    """第三路策略用：像素与其局部背景在 Lab 的 a/b 平面上的距离。
+
+    前两路都只看亮度，所以「颜色不同但一样亮」的角标（例如浅灰底上的橙色字标）
+    会同时从两张网里漏掉。a/b 与亮度无关，专门补这个洞。
+    """
     vote: float = 0.85
     """某像素需在多大比例的取样页上都成立才算水印。"""
     dilate: int = 2
     """Mask 外扩像素，吃掉抗锯齿边。"""
     radius: int = 4
     """inpaint 修复半径。"""
+    backdrop_ring: int = 6
+    """判定底色是否纯净时，往 Mask 外取样多少像素宽的一圈；0 表示禁用纯色铺底。"""
+    backdrop_tolerance: float = 4.0
+    """取样圈内像素偏离中位数的平均值上限；不超过就认为是纯色底，直接铺底色。"""
     max_area: float = 0.005
     """涂改面积占整页的上限，超了就判定为误检并中止。"""
     coverage: float = 0.98
@@ -259,6 +269,7 @@ def detect_watermark(
     sample = _even_sample(refs, options.vote_sample)
     dark_votes = np.zeros((height - y_start, width - x_start), np.float32)
     contrast_votes = np.zeros_like(dark_votes)
+    chroma_votes = np.zeros_like(dark_votes)
     sigma = max(2.0, min(8.0, min(dark_votes.shape) / 12.0))
     used = 0
     for position, ref in enumerate(sample, start=1):
@@ -270,20 +281,34 @@ def detect_watermark(
             continue
         if cache is not None:
             cache.put(ref.index, rgb)
-        gray = cv2.cvtColor(rgb[y_start:, x_start:], cv2.COLOR_RGB2GRAY)
+        corner = rgb[y_start:, x_start:]
+        gray = cv2.cvtColor(corner, cv2.COLOR_RGB2GRAY)
         dark_votes += (gray < options.dark).astype(np.float32)
         # 第二路投票：与局部背景的反差。深色角标、浅色角标都能站住，
         # 而恒定的白边距因为「和背景一样」不会入选，不至于把整条页边当水印。
         background = cv2.GaussianBlur(gray, (0, 0), sigmaX=sigma)
         contrast_votes += (cv2.absdiff(gray, background) >= options.contrast_delta).astype(np.float32)
+        # 第三路投票：色度反差。前两路都只看亮度，遇到「颜色不同但一样亮」的角标
+        # （浅灰底上的橙色字标就是这样）会同时漏掉。a/b 通道与亮度无关，专治这种。
+        lab = cv2.cvtColor(corner, cv2.COLOR_RGB2LAB).astype(np.float32)
+        ab = lab[:, :, 1:]
+        ab_background = cv2.GaussianBlur(ab, (0, 0), sigmaX=sigma)
+        chroma_distance = np.linalg.norm(ab - ab_background, axis=2)
+        chroma_votes += (chroma_distance >= options.chroma_delta).astype(np.float32)
         used += 1
     if used < 3:
         return None, f"只有 {used} 页位图可解码，跨页比对不可靠"
 
     dark_votes /= used
     contrast_votes /= used
+    chroma_votes /= used
     reasons: list[str] = []
-    for strategy, votes in (("暗像素跨页交集", dark_votes), ("局部反差跨页交集", contrast_votes)):
+    # 顺序即优先级：先试最保守的暗像素，再试亮度反差，最后才用色度补漏。
+    for strategy, votes in (
+        ("暗像素跨页交集", dark_votes),
+        ("局部反差跨页交集", contrast_votes),
+        ("色度跨页交集", chroma_votes),
+    ):
         core = (votes >= options.vote).astype(np.uint8)
         shaped, reason = _shape_core(core, height, width, options)
         if shaped is None:
@@ -379,10 +404,46 @@ def parse_box(value) -> Optional[tuple[int, int, int, int]]:
 
 # ---------------------------------------------------------------- 修复与写出
 
-def _repair(rgb: np.ndarray, mask: np.ndarray, radius: int) -> np.ndarray:
+def _flat_backdrop(
+    rgb: np.ndarray, mask: np.ndarray, ring: int, tolerance: float
+) -> Optional[np.ndarray]:
+    """角标压在纯色块上时，返回那个底色；底色不统一则返回 None。
+
+    这一步是为了绕开 inpaint。TELEA 是从边界向内推测纹理的算法，纯色区域里它会拉出
+    规则的竖条纹——幅度不大（几个灰阶），但因为有结构，人眼一眼就看出「这块被涂过」。
+    纯色底压根不需要推测：把底色铺回去就是像素级完美。
+    """
+    if ring <= 0:
+        return None
+    kernel = np.ones((ring * 2 + 1,) * 2, np.uint8)
+    outer = cv2.dilate(mask, kernel)
+    band = (outer > 0) & (mask == 0)
+    samples = rgb[band]
+    if samples.size == 0:
+        return None
+    # 用中位数而不是均值：万一取样圈蹭到了正文的笔画，中位数不会被带偏
+    center = np.median(samples, axis=0)
+    spread = np.abs(samples.astype(np.int16) - center).mean(axis=0)
+    if spread.max() > tolerance:
+        return None
+    return center.round().astype(np.uint8)
+
+
+def _repair(
+    rgb: np.ndarray,
+    mask: np.ndarray,
+    radius: int,
+    ring: int = 6,
+    flat_tolerance: float = 4.0,
+) -> np.ndarray:
     """修复 Mask 内像素；Mask 外强制逐位还原，并断言这一点。"""
-    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    repaired = cv2.cvtColor(cv2.inpaint(bgr, mask, radius, cv2.INPAINT_TELEA), cv2.COLOR_BGR2RGB)
+    backdrop = _flat_backdrop(rgb, mask, ring, flat_tolerance)
+    if backdrop is not None:
+        repaired = rgb.copy()
+        repaired[mask > 0] = backdrop
+    else:
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        repaired = cv2.cvtColor(cv2.inpaint(bgr, mask, radius, cv2.INPAINT_TELEA), cv2.COLOR_BGR2RGB)
     outside = mask == 0
     repaired[outside] = rgb[outside]
     if not np.array_equal(repaired[outside], rgb[outside]):
@@ -520,7 +581,8 @@ def clean_pdf(
             if pending_start is not None:
                 cleaned.insert_pdf(document, from_page=pending_start, to_page=index - 1)
                 pending_start = None
-            repaired = _repair(rgb, mask, options.radius)
+            repaired = _repair(rgb, mask, options.radius,
+                               options.backdrop_ring, options.backdrop_tolerance)
             image = _encode_png(repaired, options.png_compression)
             if not verified_roundtrip:
                 # 只在第一页做一次编解码往返核对，确认 PNG 这条路确实无损。
