@@ -473,3 +473,53 @@ def test_grain_is_skipped_on_smooth_surroundings() -> None:
     flat = np.full((120, 300, 3), 200, np.uint8)
     mask = box_to_mask((120, 300), (110, 50, 200, 70), dilate=2)
     assert np.array_equal(_graft_texture(flat.copy(), flat, mask), flat)
+
+
+def test_mask_follows_the_glyphs_not_the_bounding_block(tmp_path: Path) -> None:
+    """涂改要贴着字形走，不能糊成一个方块。
+
+    定位那几路用的高斯半径必须足够大才站得稳，代价是把整行字糊成一团，字母间隙
+    也跟着超标——涂出来就是个方块，画面被抹掉的比水印本身大得多。中值滤波精修
+    把它削回字形。
+
+    但也不能削过头：只涂笔画核心会留下能读出字来的残影（抗锯齿那圈仍勾着字形），
+    所以精修之后仍要小幅外扩。这两头都踩过，用覆盖率把区间钉住。
+    """
+    import cv2
+    import unwatermark as U
+
+    # 角标必须画成真实文字：实心方块本来就该 100% 覆盖，测不出精修有没有生效。
+    source = tmp_path / "deck.pdf"
+    W, H = 800, 1000
+    document = fitz.open()
+    rng = np.random.default_rng(5)
+    for index in range(8):
+        array = np.full((H, W, 3), 205, np.uint8) - rng.integers(0, 4, (H, W, 3), dtype=np.uint8)
+        image = Image.fromarray(array)
+        draw = ImageDraw.Draw(image)
+        for row in range(14):
+            y = 70 + row * 60
+            draw.rectangle([60, y, 60 + 200 + (index * 43 + row * 71) % 380, y + 15],
+                           fill=(70, 74, 88))
+        draw.text((W - 210, H - 62), "NotebookLM", fill=(40, 42, 50))
+        ok, buffer = cv2.imencode(".jpg", cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR),
+                                  [cv2.IMWRITE_JPEG_QUALITY, 92])
+        page = document.new_page(width=W * 0.72, height=H * 0.72)
+        page.insert_image(page.rect, stream=buffer.tobytes())
+    document.save(source, deflate=True)
+    document.close()
+
+    document = fitz.open(source)
+    refs, _ = U.scan_full_bleed_pages(document)
+    refs, _ = U.keep_dominant_size(refs)
+
+    refined, _ = U.detect_watermark(document, refs, CleanOptions())
+    coarse, _ = U.detect_watermark(document, refs, CleanOptions(ink_min_ratio=9.9))
+    document.close()
+
+    def coverage(detection) -> float:
+        x0, y0, x1, y1 = detection.box
+        return float((detection.mask[y0:y1, x0:x1] > 0).mean())
+
+    assert coverage(refined) < coverage(coarse) - 0.05, "精修没有比粗掩膜更贴合字形"
+    assert coverage(refined) > 0.15, "削得太狠会留下能读出字的残影"

@@ -49,6 +49,27 @@ class CleanOptions:
     """某像素需在多大比例的取样页上都成立才算水印。"""
     dilate: int = 2
     """Mask 外扩像素，吃掉抗锯齿边。"""
+    ink_kernel: int = 7
+    """精修形状用的中值滤波核（奇数）。要比笔画粗、比字高细。
+
+    定位靠高斯反差，但高斯半径大到足以站稳时会把整行字糊成一团，涂出来是个方块。
+    中值滤波核只要比笔画粗，就能把笔画整根抹掉而背景原样留下，相减剩下的才是墨迹。
+    """
+    ink_min_ratio: float = 0.12
+    """精修后至少要保留粗定位的多大比例，否则认为精修失效、退回粗掩膜。"""
+    ink_dilate: int = 1
+    """精修成功后，对字形掩膜再外扩多少像素，用来盖住抗锯齿边。
+
+    抗锯齿那圈在不同页的底色上时隐时现，达不到跨页投票的门槛，只能靠几何补。
+    起点是字形而不是方块，所以扩 1 像素不会把字母之间糊成一片；扩 0 会留下
+    能读出字来的残影。
+    """
+    ink_weak_ratio: float = 0.45
+    """滞后阈值的低档，取 contrast_delta 的这个比例。
+
+    抗锯齿边比笔画淡，够不到高阈值。用低阈值向外生长、只保留与核心连通的部分，
+    形状就沿着字母轮廓走；换成形态学外扩则是方块外扩，几像素就把字母之间粘成一片。
+    """
     radius: int = 4
     """inpaint 修复半径。"""
     backdrop_ring: int = 6
@@ -276,6 +297,8 @@ def detect_watermark(
     dark_votes = np.zeros((height - y_start, width - x_start), np.float32)
     contrast_votes = np.zeros_like(dark_votes)
     chroma_votes = np.zeros_like(dark_votes)
+    fine_votes = np.zeros_like(dark_votes)
+    weak_votes = np.zeros_like(dark_votes)
     sigma = max(2.0, min(8.0, min(dark_votes.shape) / 12.0))
     used = 0
     for position, ref in enumerate(sample, start=1):
@@ -301,6 +324,13 @@ def detect_watermark(
         ab_background = cv2.GaussianBlur(ab, (0, 0), sigmaX=sigma)
         chroma_distance = np.linalg.norm(ab - ab_background, axis=2)
         chroma_votes += (chroma_distance >= options.chroma_delta).astype(np.float32)
+        # 精细投票：只为了定「形状」，不负责定位。
+        # 上面三路用的高斯半径要足够大才站得稳，代价是把整行字糊成一团——字母间隙
+        # 也跟着超标，最后涂掉的是一个方块而不是笔画。中值滤波正好相反：核比笔画粗
+        # 就能把笔画整根抹掉、背景原样留下，两者相减剩下的才是真正的墨迹。
+        ink = cv2.absdiff(gray, cv2.medianBlur(gray, options.ink_kernel))
+        fine_votes += (ink >= options.contrast_delta).astype(np.float32)
+        weak_votes += (ink >= options.contrast_delta * options.ink_weak_ratio).astype(np.float32)
         used += 1
     if used < 3:
         return None, f"只有 {used} 页位图可解码，跨页比对不可靠"
@@ -308,6 +338,8 @@ def detect_watermark(
     dark_votes /= used
     contrast_votes /= used
     chroma_votes /= used
+    fine_votes /= used
+    weak_votes /= used
     reasons: list[str] = []
     # 顺序即优先级：先试最保守的暗像素，再试亮度反差，最后才用色度补漏。
     for strategy, votes in (
@@ -321,10 +353,55 @@ def detect_watermark(
             reasons.append(f"{strategy}：{reason}")
             continue
         core_full, box, core_pixels = shaped
-        kernel = np.ones((options.dilate * 2 + 1,) * 2, np.uint8) if options.dilate else None
-        mask = cv2.dilate(core_full * 255, kernel) if kernel is not None else core_full * 255
+        core_full, core_pixels, refined_ok = _refine_to_ink(
+            core_full, core_pixels, fine_votes, weak_votes, options)
+        # 精修成功时不再做形态学外扩：滞后阈值已经把抗锯齿边沿着字形收进来了，
+        # 再方块外扩只会把字母之间重新粘成一片。
+        grow = options.ink_dilate if refined_ok else options.dilate
+        if grow:
+            mask = cv2.dilate(core_full * 255, np.ones((grow * 2 + 1,) * 2, np.uint8))
+        else:
+            mask = core_full * 255
         return Detection(mask, box, core_pixels, used, strategy), ""
     return None, "；".join(reasons)
+
+
+def _refine_to_ink(
+    core_full: np.ndarray,
+    core_pixels: int,
+    fine_votes: np.ndarray,
+    weak_votes: np.ndarray,
+    options: CleanOptions,
+) -> tuple[np.ndarray, int, bool]:
+    """把粗定位削成笔画形状，返回 (掩膜, 像素数, 是否精修成功)。
+
+    滞后阈值：高阈值挑出确定是墨迹的核心，低阈值向外生长，只保留与核心连通的块。
+    抗锯齿边因此沿着字形被收进来，而不是像形态学外扩那样把字母之间糊成一片。
+
+    削不动就原样返回粗掩膜——宁可多涂一点，也不能因为精修失灵而漏掉半个角标。
+    """
+    height, width = core_full.shape
+
+    def lift(region: np.ndarray) -> np.ndarray:
+        full = np.zeros_like(core_full)
+        full[height - region.shape[0]:, width - region.shape[1]:] = region
+        return full
+
+    strong = lift((fine_votes >= options.vote).astype(np.uint8)) & core_full
+    if strong.sum() == 0:
+        return core_full, core_pixels, False
+
+    weak = lift((weak_votes >= options.vote).astype(np.uint8)) & core_full
+    count, labels = cv2.connectedComponents(weak, connectivity=8)
+    touched = np.unique(labels[strong > 0])
+    keep = np.zeros(count, bool)
+    keep[touched[touched > 0]] = True
+    refined = (keep[labels] | (strong > 0)).astype(np.uint8)
+
+    kept = int(refined.sum())
+    if kept < max(8, int(core_pixels * options.ink_min_ratio)):
+        return core_full, core_pixels, False
+    return refined, kept, True
 
 
 def _shape_core(
