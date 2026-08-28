@@ -55,6 +55,12 @@ class CleanOptions:
     """判定底色是否纯净时，往 Mask 外取样多少像素宽的一圈；0 表示禁用纯色铺底。"""
     backdrop_tolerance: float = 4.0
     """取样圈内像素偏离中位数的平均值上限；不超过就认为是纯色底，直接铺底色。"""
+    graft_texture: bool = True
+    """走 inpaint 那条路时，是否把邻近的高频纹理移植到修复区。
+
+    补的是按周围颗粒强度合成的噪声。注意不能从旁边搬真实纹理——试过，会把画面结构
+    （叶子边缘等）一起复制进来，肉眼看到弧线和划痕，而高频能量这个指标反而变好看。
+    """
     max_area: float = 0.005
     """涂改面积占整页的上限，超了就判定为误检并中止。"""
     coverage: float = 0.98
@@ -429,12 +435,57 @@ def _flat_backdrop(
     return center.round().astype(np.uint8)
 
 
+def _graft_texture(
+    repaired: np.ndarray, rgb: np.ndarray, mask: np.ndarray, sigma: float = 1.6
+) -> np.ndarray:
+    """给修复区补回颗粒感，别让补丁光滑得可疑。
+
+    inpaint 靠扩散填色：低频颜色接得住，高频全被抹平。于是在水彩、纸纹这类有颗粒的
+    画面上，修复区是一块异常光滑的矩形——放大看一眼就锁定。
+
+    补的是**合成噪声**，不是从旁边搬来的真实纹理。搬真实纹理试过，会把邻近的画面结构
+    （叶子边缘之类）一起复制进来，视觉上更糟；量化指标反而变好看，所以这里只信眼睛。
+    噪声的强度按周围一圈的高频能量定，空间尺度用一次轻微模糊对上纸纹的粗细。
+    """
+    ys, xs = np.nonzero(mask)
+    if len(ys) == 0:
+        return repaired
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+
+    # 参照区：Mask 外扩一圈里的真实像素，用来量「这块画面本身有多少颗粒」
+    band = (cv2.dilate(mask, np.ones((13, 13), np.uint8)) > 0) & (mask == 0)
+    if not band.any():
+        return repaired
+    detail = rgb.astype(np.float32) - cv2.GaussianBlur(rgb, (0, 0), sigmaX=sigma).astype(np.float32)
+    amplitude = float(detail[band].std())
+    if amplitude < 0.5:                      # 周围本来就平滑，补噪声反而是画蛇添足
+        return repaired
+
+    height_, width_ = y1 - y0, x1 - x0
+    rng = np.random.default_rng(0)           # 固定种子：同一份输入每次结果一致
+    # 单通道再广播到 RGB：纸纹是亮度上的颗粒。三个通道各自随机会产生彩色噪点，
+    # 放大看是一片红绿斑，比原来那块光滑区域更扎眼。
+    mono = rng.standard_normal((height_, width_)).astype(np.float32)
+    mono = cv2.GaussianBlur(mono, (0, 0), sigmaX=sigma * 0.6)
+    noise = np.repeat(mono[:, :, None], 3, axis=2)
+    spread = noise.std()
+    if spread <= 1e-6:
+        return repaired
+    noise *= amplitude / spread
+
+    patch = repaired[y0:y1, x0:x1].astype(np.float32) + noise
+    out = repaired.copy()
+    out[y0:y1, x0:x1] = np.clip(patch, 0, 255).astype(np.uint8)
+    return out
+
+
 def _repair(
     rgb: np.ndarray,
     mask: np.ndarray,
     radius: int,
     ring: int = 6,
     flat_tolerance: float = 4.0,
+    graft: bool = True,
 ) -> np.ndarray:
     """修复 Mask 内像素；Mask 外强制逐位还原，并断言这一点。"""
     backdrop = _flat_backdrop(rgb, mask, ring, flat_tolerance)
@@ -444,6 +495,8 @@ def _repair(
     else:
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         repaired = cv2.cvtColor(cv2.inpaint(bgr, mask, radius, cv2.INPAINT_TELEA), cv2.COLOR_BGR2RGB)
+        if graft:
+            repaired = _graft_texture(repaired, rgb, mask)
     outside = mask == 0
     repaired[outside] = rgb[outside]
     if not np.array_equal(repaired[outside], rgb[outside]):
@@ -582,7 +635,8 @@ def clean_pdf(
                 cleaned.insert_pdf(document, from_page=pending_start, to_page=index - 1)
                 pending_start = None
             repaired = _repair(rgb, mask, options.radius,
-                               options.backdrop_ring, options.backdrop_tolerance)
+                               options.backdrop_ring, options.backdrop_tolerance,
+                               options.graft_texture)
             image = _encode_png(repaired, options.png_compression)
             if not verified_roundtrip:
                 # 只在第一页做一次编解码往返核对，确认 PNG 这条路确实无损。

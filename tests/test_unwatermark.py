@@ -435,3 +435,41 @@ def test_badges_of_any_color_are_found(tmp_path: Path, name, badge) -> None:
     x0, y0, x1, y1 = result.box
     assert 560 <= x0 <= 600 and 700 <= x1 <= 730, f"{name} 定位偏了：{result.box}"
     assert 920 <= y0 <= 945 and 945 <= y1 <= 970, f"{name} 定位偏了：{result.box}"
+
+
+def test_grain_added_to_repair_is_monochrome() -> None:
+    """补回的颗粒必须是亮度噪声。
+
+    三个通道各自随机会产生彩色噪点，放大看是一片红绿斑，比原来那块光滑区域更扎眼——
+    这是实测踩过的坑。纸纹本身是亮度上的颗粒，所以合成噪声也必须单色。
+    """
+    import cv2
+    from unwatermark import _graft_texture, box_to_mask
+
+    rng = np.random.default_rng(3)
+    H, W = 120, 300
+    base = np.full((H, W, 3), 150, np.uint8)
+    grain = rng.normal(0, 9, (H, W, 1)).repeat(3, axis=2)      # 单色纸纹
+    textured = np.clip(base + grain, 0, 255).astype(np.uint8)
+    mask = box_to_mask((H, W), (110, 50, 200, 70), dilate=2)
+
+    smooth = textured.copy()
+    smooth[mask > 0] = 150                                      # 模拟 inpaint 抹平后的样子
+    grained = _graft_texture(smooth, textured, mask)
+
+    inside = mask > 0
+    # 颗粒补回来了
+    assert grained[inside].std() > smooth[inside].std() + 2
+    # 且是单色的：同一像素三通道的偏差应当极小
+    channel_spread = grained[inside].astype(float)
+    assert np.abs(channel_spread - channel_spread.mean(axis=1, keepdims=True)).max() <= 1.5
+    # Mask 外一个像素都不许动
+    assert np.array_equal(grained[~inside], smooth[~inside])
+
+
+def test_grain_is_skipped_on_smooth_surroundings() -> None:
+    """周围本来就平滑时不该硬加噪声——那是画蛇添足。"""
+    from unwatermark import _graft_texture, box_to_mask
+    flat = np.full((120, 300, 3), 200, np.uint8)
+    mask = box_to_mask((120, 300), (110, 50, 200, 70), dilate=2)
+    assert np.array_equal(_graft_texture(flat.copy(), flat, mask), flat)
