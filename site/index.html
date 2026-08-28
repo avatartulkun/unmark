@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>unmark · 去掉 PDF 右下角的固定角标水印</title>
+<meta name="description" content="去掉整页位图型 PDF 右下角的固定角标水印（NotebookLM 导出等）。在你自己电脑上跑，PDF 不上传，原件不改写。开源，MIT 协议。">
+<meta property="og:title" content="unmark · 去掉 PDF 右下角的固定角标水印">
+<meta property="og:description" content="在你自己电脑上跑，PDF 不上传，原件不改写。开源，MIT 协议。">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236C63FF'/%3E%3Crect x='8' y='7' width='16' height='18' rx='2' fill='white'/%3E%3Crect x='14' y='19' width='8' height='2.5' rx='1.25' fill='%236C63FF' opacity='.35'/%3E%3Cpath d='M11 20.2l3.4 3.4' stroke='%236C63FF' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#F5F7FB; --card:#FFFFFF; --ink:#1D2939; --muted:#667085;
+    --line:#E4E7EC; --accent:#6C63FF; --accent-dark:#574FE6;
+    --ok:#067647; --ok-bg:#ECFDF3; --warn:#B54708; --warn-bg:#FFFAEB;
+    --code-bg:#0F1521; --code-ink:#E6E9F0;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0E1117; --card:#161B24; --ink:#E6E9F0; --muted:#96A0B5;
+      --line:#252C39; --accent:#8B84FF; --accent-dark:#A29BFF;
+      --ok:#75D89B; --ok-bg:#12241A; --warn:#F0C36B; --warn-bg:#241D10;
+      --code-bg:#0A0E16; --code-ink:#E6E9F0;
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:760px;margin:0 auto;padding:0 24px}
+  a{color:var(--accent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;
+       background:rgba(108,99,255,.1);padding:.15em .4em;border-radius:5px}
+  pre{background:var(--code-bg);color:var(--code-ink);padding:16px 18px;border-radius:11px;
+      overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size:13.5px;line-height:1.7;margin:14px 0}
+  pre code{background:none;padding:0;color:inherit;font-size:inherit}
+
+  /* 顶部 */
+  header{padding:72px 0 8px}
+  .logo{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:15px;
+        letter-spacing:.02em;color:var(--muted);margin-bottom:26px}
+  .logo svg{display:block}
+  h1{font-size:clamp(30px,5.5vw,42px);line-height:1.25;margin:0 0 14px;letter-spacing:-.02em}
+  .lede{font-size:19px;color:var(--muted);margin:0 0 8px;max-width:34em}
+  .cta{display:flex;gap:12px;flex-wrap:wrap;margin:30px 0 8px}
+  .btn{display:inline-block;padding:11px 20px;border-radius:10px;font-size:15px;font-weight:600;
+       text-decoration:none;border:1px solid var(--line);background:var(--card);color:var(--ink);
+       transition:.15s}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff}
+
+  /* 通用块 */
+  section{padding:44px 0;border-top:1px solid var(--line)}
+  section:first-of-type{border-top:none}
+  h2{font-size:21px;margin:0 0 8px;letter-spacing:-.01em}
+  h2 + .note{margin-top:-2px}
+  .note{color:var(--muted);margin:0 0 18px}
+  p{margin:0 0 16px}
+  ul{margin:0 0 16px;padding-left:1.15em}
+  li{margin-bottom:7px}
+  li::marker{color:var(--muted)}
+
+  /* 提示条 */
+  .callout{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+           border-radius:0 11px 11px 0;padding:16px 20px;margin:20px 0}
+  .callout p:last-child{margin-bottom:0}
+  .callout strong{color:var(--ink)}
+
+  /* 示意图 */
+  .demo{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;
+        margin:22px 0 10px}
+  .shot{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:12px}
+  .shot svg{display:block;width:100%;height:auto;border-radius:5px}
+  .shot span{display:block;text-align:center;font-size:12.5px;color:var(--muted);margin-top:9px}
+  .arrow{color:var(--muted);font-size:19px}
+  @media (max-width:560px){
+    .demo{grid-template-columns:1fr;gap:10px}
+    .arrow{text-align:center;transform:rotate(90deg)}
+  }
+
+  /* 步骤 */
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:20px 0 0}
+  ol.steps > li{counter-increment:s;position:relative;padding-left:40px;margin-bottom:26px}
+  ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;
+    width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;
+    font-size:13.5px;font-weight:700;display:grid;place-items:center;line-height:1}
+  ol.steps h3{font-size:16.5px;margin:0 0 6px}
+  ol.steps p{margin:0 0 8px;color:var(--muted)}
+  ol.steps pre{margin:10px 0 0}
+
+  /* 表格 */
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:15px}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  td:first-child{white-space:nowrap;color:var(--muted)}
+
+  footer{border-top:1px solid var(--line);padding:32px 0 56px;color:var(--muted);font-size:14px}
+  footer a{color:var(--muted)}
+  footer a:hover{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <div class="logo">
+    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="7" fill="currentColor" opacity=".16"/>
+      <rect x="8" y="7" width="16" height="18" rx="2" fill="currentColor" opacity=".5"/>
+      <path d="M11 20.2l3.4 3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    unmark
+  </div>
+  <h1>去掉 PDF 右下角<br>那个甩不掉的角标</h1>
+  <p class="lede">
+    NotebookLM 导出的 PDF，每一页右下角都盖着一个固定角标。这个工具把它抹掉，
+    其余像素一个不动。
+  </p>
+  <div class="cta">
+    <a class="btn primary" href="#install">怎么用</a>
+    <a class="btn" href="https://github.com/avatartulkun/unmark">在 GitHub 上看代码</a>
+  </div>
+</header>
+
+<section>
+  <div class="callout">
+    <p><strong>这不是一个在线服务。</strong>你下载它，装在自己电脑上，PDF 从头到尾没离开过你的硬盘 ——
+    程序只监听本机地址，压根没有上传这个动作。这一页只是说明书。</p>
+  </div>
+</section>
+
+<section>
+  <h2>它处理的是哪种水印</h2>
+  <p class="note">整页是一张图、角标烙在像素里的那种。</p>
+
+  <div class="demo">
+    <div class="shot">
+      <svg viewBox="0 0 240 150" role="img" aria-label="处理前：页面右下角有角标">
+        <rect width="240" height="150" fill="#fff" stroke="#E4E7EC"/>
+        <g fill="#C8CDD8">
+          <rect x="20" y="22" width="150" height="7" rx="3.5"/>
+          <rect x="20" y="40" width="200" height="5" rx="2.5"/>
+          <rect x="20" y="53" width="200" height="5" rx="2.5"/>
+          <rect x="20" y="66" width="176" height="5" rx="2.5"/>
+          <rect x="20" y="86" width="200" height="5" rx="2.5"/>
+          <rect x="20" y="99" width="140" height="5" rx="2.5"/>
+        </g>
+        <rect x="150" y="126" width="70" height="11" rx="3" fill="#1D2939" opacity=".72"/>
+        <rect x="146" y="122" width="78" height="19" rx="5" fill="none"
+              stroke="#B42318" stroke-width="1.6" stroke-dasharray="4 3"/>
+      </svg>
+      <span>处理前</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="shot">
+      <svg viewBox="0 0 240 150" role="img" aria-label="处理后：角标消失，正文不变">
+        <rect width="240" height="150" fill="#fff" stroke="#E4E7EC"/>
+        <g fill="#C8CDD8">
+          <rect x="20" y="22" width="150" height="7" rx="3.5"/>
+          <rect x="20" y="40" width="200" height="5" rx="2.5"/>
+          <rect x="20" y="53" width="200" height="5" rx="2.5"/>
+          <rect x="20" y="66" width="176" height="5" rx="2.5"/>
+          <rect x="20" y="86" width="200" height="5" rx="2.5"/>
+          <rect x="20" y="99" width="140" height="5" rx="2.5"/>
+        </g>
+        <rect x="146" y="122" width="78" height="19" rx="5" fill="none"
+              stroke="#067647" stroke-width="1.6" stroke-dasharray="4 3"/>
+      </svg>
+      <span>处理后</span>
+    </div>
+  </div>
+  <p style="font-size:13.5px;color:var(--muted);margin-top:4px">
+    上图是示意，不是实际截图。
+  </p>
+
+  <p>
+    如果角标是可选中的<em>文字</em>，那它是一个独立的文本对象，用 PDF 编辑器直接删掉就行，
+    比涂像素干净得多。所以这个工具遇到有文字层的页会主动跳过，不去趟那趟浑水。
+  </p>
+</section>
+
+<section>
+  <h2>它怎么知道哪块是水印</h2>
+  <p class="note">不靠内置模板图，所以换字体、换版本、换成别家的角标，一样认得出来。</p>
+  <p>
+    水印的定义就是「内容在变，它不变」的那部分像素。所以做法是把若干页的右下角叠起来求交集 ——
+    在几乎每一页的<strong>同一个坐标</strong>都长得一样的，才算数。
+  </p>
+  <p>两路投票，先找深色的，找不到再找浅的：</p>
+  <ul>
+    <li><strong>暗像素跨页交集</strong> —— 对付深色角标，NotebookLM 属于这类</li>
+    <li><strong>局部反差跨页交集</strong> —— 第一路没结果才启用，能抓浅色和半透明的角标。
+        判据是「和自己周围不一样」，所以整页都白的页边不会被误当成水印</li>
+  </ul>
+  <p>
+    要是找出来的区域超过整页的 0.5%，或者形状不像一行角标（太小、长宽比不对），
+    一律判为认错了，<strong>直接中止不处理</strong>。宁可交还给你一个没动过的文件，也不乱涂一气。
+  </p>
+</section>
+
+<section>
+  <h2>不会把你的文件搞坏</h2>
+  <ul>
+    <li><strong>原件永远不改写</strong>，结果写进一个新文件</li>
+    <li>每页修复完，强制还原选区之外的像素并逐一断言；中间图用 PNG 无损编码，还做一次编解码往返核对</li>
+    <li>写出之后重新打开，抽页逐像素复核 —— 确认选区之外真的一个像素都没变</li>
+    <li>服务只监听 <code>127.0.0.1</code>，你的 PDF 不出这台电脑</li>
+  </ul>
+</section>
+
+<section id="install">
+  <h2>怎么用</h2>
+  <p class="note">需要电脑上有 Python 3.10 或更新的版本。</p>
+
+  <ol class="steps">
+    <li>
+      <h3>下载代码</h3>
+      <p>有 git 就用这条；没有的话，去 GitHub 页面点 Code → Download ZIP 也一样。</p>
+<pre><code>git clone https://github.com/avatartulkun/unmark.git
+cd unmark</code></pre>
+    </li>
+    <li>
+      <h3>装依赖（只需一次）</h3>
+<pre><code>python3 -m pip install -r requirements.txt</code></pre>
+    </li>
+    <li>
+      <h3>启动</h3>
+      <p>Mac 上双击 <code>启动去水印网页.command</code> 就行，浏览器会自己打开。
+         也可以用命令行：</p>
+<pre><code>python3 server.py</code></pre>
+      <p>然后把 PDF 拖进页面，等进度跑完，看「处理前 / 处理后」的放大对比，确认没问题再下载。</p>
+    </li>
+  </ol>
+
+  <p style="margin-top:26px">也可以当成 Python 库直接调用：</p>
+<pre><code>from unwatermark import clean_pdf
+
+result = clean_pdf("输入.pdf", "输出.pdf")
+print(result.success, result.message)</code></pre>
+</section>
+
+<section>
+  <h2>先说在前面的几件事</h2>
+  <table>
+    <tr>
+      <th style="width:30%">情况</th>
+      <th>说明</th>
+    </tr>
+    <tr>
+      <td>输出文件更大</td>
+      <td>例如 15.9 MB 变成 19.3 MB。因为中间图用 PNG 无损重编码，而原件是 JPEG。
+          要的是像素不失真，代价就是体积。</td>
+    </tr>
+    <tr>
+      <td>有文字层的页会跳过</td>
+      <td>那种水印多半是能直接删除的文本对象，不该用涂像素的办法处理。</td>
+    </tr>
+    <tr>
+      <td>一次只能处理一个文件</td>
+      <td>暂时还不支持批量导入。</td>
+    </tr>
+    <tr>
+      <td>认不出来就不动手</td>
+      <td>检测不到、或者检测结果不合理，程序会明确告诉你「未处理」，而不是硬涂一块。</td>
+    </tr>
+  </table>
+</section>
+
+<footer>
+  <p style="margin-bottom:6px">
+    开源，MIT 协议 ·
+    <a href="https://github.com/avatartulkun/unmark">GitHub</a> ·
+    <a href="https://github.com/avatartulkun/unmark/issues">反馈问题</a>
+  </p>
+  <p style="margin:0">
+    请只用它处理你有权处理的文件。
+  </p>
+</footer>
+
+</div>
+</body>
+</html>
