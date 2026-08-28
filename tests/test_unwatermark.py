@@ -8,6 +8,7 @@ import json
 import socket
 import threading
 import time
+import types
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -242,3 +243,78 @@ def test_index_page_is_served(base_url) -> None:
     status, body = _get(base_url + "/")
     assert status == 200
     assert "去水印" in body.decode("utf-8")
+
+
+# ------------------------------------------------------- 公网部署用的限制
+
+import server as server_module  # noqa: E402
+
+
+def _post_raw(base_url: str, data: bytes, name: str = "deck.pdf"):
+    request = urllib.request.Request(
+        f"{base_url}/api/jobs", data=data, method="POST",
+        headers={"content-type": "application/octet-stream", "x-filename": name},
+    )
+    return urllib.request.urlopen(request, timeout=30)
+
+
+def test_oversized_upload_is_rejected(base_url, monkeypatch) -> None:
+    """超限的请求要被挡掉，而不是先整个收进内存再说。"""
+    monkeypatch.setattr(server_module, "MAX_UPLOAD_BYTES", 2048)
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        _post_raw(base_url, b"%PDF-1.7\n" + b"0" * 5000)
+    assert excinfo.value.code == 413
+    assert "MB" in excinfo.value.read().decode("utf-8")
+
+
+def test_rate_limit_blocks_flood(base_url, monkeypatch) -> None:
+    monkeypatch.setattr(server_module, "RATE_LIMIT_JOBS", 3)
+    with server_module.RATE_LOCK:
+        server_module.RATE_HITS.clear()
+    try:
+        codes = []
+        for _ in range(5):
+            try:
+                # 内容故意不合法：限流发生在解析之前，所以 400 也算「放行了」。
+                _post_raw(base_url, b"not a pdf at all")
+            except urllib.error.HTTPError as error:
+                codes.append(error.code)
+        assert codes[:3] == [400, 400, 400], codes
+        assert codes[3:] == [429, 429], codes
+    finally:
+        with server_module.RATE_LOCK:
+            server_module.RATE_HITS.clear()
+
+
+def test_healthz_reports_liveness(base_url) -> None:
+    status, body = _get(base_url + "/healthz")
+    assert status == 200
+    assert json.loads(body)["ok"] is True
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("../../etc/passwd.pdf", "passwd"),
+    ("C:\\Users\\me\\秘密.pdf", "秘密"),
+    ("....pdf", "document"),   # 纯点号的主干会被清空，回落到默认名
+    ("", "document"),
+    ("/", "document"),
+    ("a" * 200 + ".pdf", "a" * 80),
+])
+def test_safe_stem_keeps_files_inside_the_job_directory(raw, expected) -> None:
+    stem = server_module._safe_stem(raw)
+    assert stem == expected
+    assert "/" not in stem and "\\" not in stem
+
+
+@pytest.mark.parametrize("raw, expected", [
+    (None, 0.30),
+    ("0.4", 0.40),
+    ("垃圾", 0.30),
+    ("nan", 0.30),
+    ("1.0", 0.60),     # 夹到上限：整页扫描会让 CPU/内存翻好几倍
+    ("-5", 0.05),
+])
+def test_ratio_param_is_clamped(raw, expected) -> None:
+    params = {} if raw is None else {"corner_w": raw}
+    request = types.SimpleNamespace(query_params=params)
+    assert server_module._ratio_param(request, "corner_w", 0.30) == pytest.approx(expected)

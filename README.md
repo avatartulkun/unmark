@@ -42,6 +42,35 @@ python3 server.py --port 8823
 - 有文字层的页会跳过——那种水印多半是可直接删除的文本对象，不该用涂像素的办法处理
 - 服务只监听 `127.0.0.1`，PDF 不出这台电脑
 
+## 部署成公开服务
+
+默认只监听 `127.0.0.1`。要放到公网上给别人用，把监听地址改掉即可：
+
+```bash
+python3 server.py --host 0.0.0.0
+# 或者用镜像
+docker build -t unmark . && docker run -p 8823:8823 unmark
+```
+
+仓库里附了 `Dockerfile` 和 `fly.toml`（Fly.io）。**注意这时 PDF 会上传到服务器**，
+本机版那条「文件不出这台电脑」的保证不再成立，界面上要如实说明。
+
+各项上限都走环境变量，默认值针对小内存实例调过：
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `UNMARK_MAX_UPLOAD_MB` | `60` | 单个文件大小上限 |
+| `UNMARK_MAX_CONCURRENT` | `2` | 同时真正在跑的任务数，直接决定内存峰值 |
+| `UNMARK_MAX_LIVE_JOBS` | `24` | 内存中保留的任务数，超出从最旧的已结束任务开始丢 |
+| `UNMARK_RATE_LIMIT` | `12` | 每个来源在窗口内可发起的任务数 |
+| `UNMARK_RATE_WINDOW_MIN` | `60` | 限流窗口（分钟） |
+| `UNMARK_JOB_TTL_MIN` | `120` | 任务连同临时文件的保留时长 |
+| `UNMARK_TRUST_PROXY` | 未设 | 置 `1` 才按 `CF-Connecting-IP` / `X-Forwarded-For` 认来源 |
+| `UNMARK_HOST` | `127.0.0.1` | 监听地址 |
+
+上传是边收边计数的，超限立刻断开——不会先把请求体整个读进内存再判断。
+探活接口是 `GET /healthz`。
+
 ## 文件
 
 | 文件 | 作用 |
@@ -49,7 +78,9 @@ python3 server.py --port 8823
 | `unwatermark.py` | 检测与修复算法，可单独 import 使用 |
 | `server.py` | 网页后端（FastAPI） |
 | `static/index.html` | 页面 |
+| `site/index.html` | 介绍页（unmark.tinylabpro.com） |
 | `启动去水印网页.command` | 双击启动 |
+| `Dockerfile` / `fly.toml` | 公开部署用 |
 | `tests/` | 算法层 + 网页层测试 |
 
 当脚本用：
