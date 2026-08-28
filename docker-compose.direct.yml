@@ -1,0 +1,58 @@
+# 直连模式：服务器自己终结 HTTPS，不用 Cloudflare Tunnel。
+#
+#   docker compose -f docker-compose.direct.yml up -d --build
+#
+# 和 docker-compose.yml（隧道模式）是二选一，不要同时起——两边都要 8823。
+#
+# 前提：
+#   1. 域名 DNS 直接 A 记录指向本机公网 IP，Cloudflare 那朵云关成灰色
+#   2. 云服务商与本机防火墙都放行 443 入站
+#
+# 相比隧道模式的取舍：服务器 IP 公开、没有 Cloudflare 挡在前面；
+# 好处是不需要任何 Cloudflare 凭据，服务器上也不存长期密钥。
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      UNMARK_HOST: "0.0.0.0"
+      UNMARK_PUBLIC_MODE: "1"
+      UNMARK_MAX_UPLOAD_MB: "60"
+      UNMARK_MAX_CONCURRENT: "2"
+      UNMARK_MAX_LIVE_JOBS: "24"
+      UNMARK_RATE_LIMIT: "12"
+      UNMARK_RATE_WINDOW_MIN: "60"
+      UNMARK_JOB_TTL_MIN: "120"
+      UNMARK_TRUST_PROXY: "1"       # Caddy 会写 X-Forwarded-For，限流才认得出真实来源
+    expose:
+      - "8823"                       # 只给 caddy 连，不映射到宿主机
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8823/healthz',timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "443:443/udp"                # HTTP/3
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data              # 证书存这里，重启不会重新签发（别删，有速率限制）
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

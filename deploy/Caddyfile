@@ -1,0 +1,41 @@
+# 直连模式：服务器自己终结 HTTPS，不经 Cloudflare 代理。
+#
+# 证书走 Let's Encrypt 的 TLS-ALPN-01 验证，只需要 443 端口——所以不必额外开 80，
+# 也不必把任何 Cloudflare 凭据放到服务器上。
+#
+# 前提：该域名的 DNS 必须直接解析到本机 IP（Cloudflare 那朵云要关成灰色）。
+# 开着橙云的话 Cloudflare 会替你终结 TLS，验证请求到不了这里，签发必然失败。
+
+{
+	# 没开 80 端口，别在 HTTP 验证上白等一轮
+	auto_https disable_redirects
+}
+
+unmark.tinylabpro.com {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+
+	# 比应用自己的 60 MB 上限留一点余量：让应用返回它那句人话提示，
+	# 而不是在这一层被硬切断、前端只看到连接被重置。
+	request_body {
+		max_size 70MB
+	}
+
+	reverse_proxy app:8823 {
+		# 大文件处理慢，别让反代提前掐断
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+
+	encode zstd gzip
+
+	log {
+		output stderr
+		format console
+	}
+}
