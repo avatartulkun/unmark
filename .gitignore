@@ -6,3 +6,4 @@ venv/
 .DS_Store
 *_已去水印.pdf
 .wrangler/
+.env

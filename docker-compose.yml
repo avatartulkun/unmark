@@ -1,0 +1,47 @@
+# 家用部署：一台常开的电脑 + Cloudflare Tunnel。
+#
+#   docker compose up -d
+#
+# 隧道是出站连接，所以不需要公网 IP、不需要在路由器上开端口，
+# 在运营商大内网（CGNAT）后面也照常工作。
+#
+# 用法见 README「部署成公开服务」。TUNNEL_TOKEN 从 Cloudflare Zero Trust
+# 后台创建隧道时拿到，写进同目录的 .env 文件，不要提交进仓库。
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      UNMARK_HOST: "0.0.0.0"
+      UNMARK_MAX_UPLOAD_MB: "60"
+      UNMARK_MAX_CONCURRENT: "2"      # 同时真正在跑的任务数，决定内存峰值
+      UNMARK_MAX_LIVE_JOBS: "24"
+      UNMARK_RATE_LIMIT: "12"         # 每个来源每小时最多发起几次
+      UNMARK_RATE_WINDOW_MIN: "60"
+      UNMARK_JOB_TTL_MIN: "120"
+      UNMARK_TRUST_PROXY: "1"         # 在 Cloudflare 后面，按 CF-Connecting-IP 认来源
+    # 不对外映射端口：只有隧道容器需要连它，宿主机和局域网都碰不到。
+    expose:
+      - "8823"
+    deploy:
+      resources:
+        limits:
+          memory: 2g                  # 整页位图运算吃内存；给够，免得被 OOM 杀掉
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8823/healthz',timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?请在 .env 里设置 TUNNEL_TOKEN}
+    depends_on:
+      app:
+        condition: service_healthy

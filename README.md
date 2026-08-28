@@ -52,6 +52,22 @@ python3 server.py --host 0.0.0.0
 docker build -t unmark . && docker run -p 8823:8823 unmark
 ```
 
+### 家里的机器 + Cloudflare Tunnel
+
+不想租服务器就用这条：找一台常开的电脑，让它通过隧道对外提供服务。隧道是**出站**连接，
+所以没有公网 IP、在运营商大内网（CGNAT）后面、IP 天天变，都照常工作，路由器上一个端口都不用开。
+
+1. Cloudflare Zero Trust 后台 → Networks → Tunnels → 建一条隧道，拿到 token
+2. 在本目录建 `.env`，写入 `TUNNEL_TOKEN=你的token`（已在 `.gitignore` 里，不会被提交）
+3. 隧道的 Public hostname 指向 `http://app:8823`
+4. `docker compose up -d`
+
+`docker-compose.yml` 里应用容器**不对外映射端口**，只有隧道容器连得到它，
+宿主机和局域网都碰不到。
+
+要注意上传带宽：处理后的文件比原件大，60 MB 进、70 多 MB 出，回传走的是家庭宽带的上行。
+几个人偶尔用没问题，量大了会占满你自己的上传。
+
 仓库里附了 `Dockerfile` 和 `fly.toml`（Fly.io）。**注意这时 PDF 会上传到服务器**，
 本机版那条「文件不出这台电脑」的保证不再成立，界面上要如实说明。
 
