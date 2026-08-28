@@ -318,3 +318,21 @@ def test_ratio_param_is_clamped(raw, expected) -> None:
     params = {} if raw is None else {"corner_w": raw}
     request = types.SimpleNamespace(query_params=params)
     assert server_module._ratio_param(request, "corner_w", 0.30) == pytest.approx(expected)
+
+
+def test_index_privacy_copy_matches_deployment_mode(monkeypatch) -> None:
+    """本机版说「不上传」，公开版必须说清文件确实传到服务器——不能两边都挂着。"""
+    monkeypatch.setattr(server_module, "PUBLIC_MODE", False)
+    local = server_module._render_index()
+    assert "不上传任何服务器" in local and "全程离线" in local
+    assert "上传到服务器" not in local
+
+    monkeypatch.setattr(server_module, "PUBLIC_MODE", True)
+    public = server_module._render_index()
+    assert "上传到服务器" in public
+    assert "不上传任何服务器" not in public and "全程离线" not in public
+    assert "自动删除" in public          # 说了传上去，就得说什么时候删
+    assert "下载到本地运行" in public     # 给在意隐私的人一条退路
+
+    for html in (local, public):
+        assert "<!--SUB_NOTE-->" not in html and "<!--FOOT_NOTE-->" not in html

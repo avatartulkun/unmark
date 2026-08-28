@@ -66,6 +66,10 @@ JOB_TTL = timedelta(minutes=_env_int("UNMARK_JOB_TTL_MIN", 120))
 TRUST_PROXY = os.environ.get("UNMARK_TRUST_PROXY") == "1"
 """放在 Cloudflare / 负载均衡后面时置 1，才按 X-Forwarded-For 认来源 IP。"""
 
+PUBLIC_MODE = os.environ.get("UNMARK_PUBLIC_MODE") == "1"
+"""对外服务时置 1。页面上关于隐私的说法会跟着改——本机版说「不上传」，
+公开版必须说清文件确实传到了服务器，以及多久删除。同一份 HTML 不能两边都吹。"""
+
 RUN_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_JOBS)
 
 
@@ -230,6 +234,30 @@ def _png(image: Image.Image, box_ratio: Optional[list] = None, pad: float = 1.2)
                     headers={"Cache-Control": "no-store"})
 
 
+def _render_index() -> str:
+    """把页面上关于隐私的说法按部署模式填进去。
+
+    本机版「不上传任何服务器」是真的；公开部署后就不是了，所以那句话必须换掉，
+    而不是两边都挂着。占位符写成 HTML 注释，直接打开文件也不会看到残留标记。
+    """
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    limit_mb = MAX_UPLOAD_BYTES // (1024 * 1024)
+    ttl_min = int(JOB_TTL.total_seconds() // 60)
+    ttl = f"{ttl_min // 60} 小时" if ttl_min >= 60 else f"{ttl_min} 分钟"
+
+    if PUBLIC_MODE:
+        sub = (f"文件会上传到服务器处理，最大 {limit_mb} MB，"
+               f"原件与结果都在 {ttl}后自动删除。")
+        foot = ('想让文件完全不离开自己的电脑，可以'
+                '<a href="https://github.com/avatartulkun/unmark" '
+                'target="_blank" rel="noopener">下载到本地运行</a>。')
+    else:
+        sub = "PDF 只在本机处理，不上传任何服务器。"
+        foot = "全程离线。"
+
+    return html.replace("<!--SUB_NOTE-->", sub).replace("<!--FOOT_NOTE-->", foot)
+
+
 def _safe_stem(name: str) -> str:
     """文件名来自客户端请求头，只拿它的主干，且只保留能安全落盘的字符。"""
     stem = Path(name.replace("\\", "/")).stem
@@ -284,7 +312,7 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
-        return HTMLResponse((STATIC_DIR / "index.html").read_text(encoding="utf-8"))
+        return HTMLResponse(_render_index())
 
     @app.get("/healthz")
     def healthz() -> JSONResponse:

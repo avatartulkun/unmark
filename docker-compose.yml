@@ -14,6 +14,7 @@ services:
     restart: unless-stopped
     environment:
       UNMARK_HOST: "0.0.0.0"
+      UNMARK_PUBLIC_MODE: "1"         # 页面如实说明文件会上传、多久删除
       UNMARK_MAX_UPLOAD_MB: "60"
       UNMARK_MAX_CONCURRENT: "2"      # 同时真正在跑的任务数，决定内存峰值
       UNMARK_MAX_LIVE_JOBS: "24"

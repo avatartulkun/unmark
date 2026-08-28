@@ -21,7 +21,9 @@ RUN useradd --create-home --uid 10001 unmark \
 USER unmark
 
 # 对外监听；具体上限交给环境变量，见 server.py 顶部。
+# PUBLIC_MODE 让页面如实说明「文件会上传到服务器」，别挂着本机版的隐私说法。
 ENV UNMARK_HOST=0.0.0.0 \
+    UNMARK_PUBLIC_MODE=1 \
     PORT=8823
 
 EXPOSE 8823

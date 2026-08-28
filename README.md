@@ -52,6 +52,16 @@ python3 server.py --host 0.0.0.0
 docker build -t unmark . && docker run -p 8823:8823 unmark
 ```
 
+### 一键部署（Debian / Ubuntu）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/avatartulkun/unmark/main/deploy/setup.sh | bash
+```
+
+检查内存与架构、装 Docker、拉代码、问一次隧道 token、构建启动、等健康检查。
+可以反复执行。内存不足 3.5 GB 时会自动生成 `docker-compose.override.yml`
+把并发压到 1、上传上限降到 30 MB。
+
 ### 家里的机器 + Cloudflare Tunnel
 
 不想租服务器就用这条：找一台常开的电脑，让它通过隧道对外提供服务。隧道是**出站**连接，
@@ -115,5 +125,17 @@ python3 -m pytest -q
 
 ## 已知情况
 
-输出 PDF 通常比原件大（例：15.9 MB → 19.3 MB）。因为中间图用 PNG 无损重编码，
-而 NotebookLM 导出的原件是 JPEG。要的是像素不失真，代价是体积。
+输出 PDF 通常比原件大。因为中间图用 PNG 无损重编码，而 NotebookLM 导出的原件是
+JPEG。要的是像素不失真，代价是体积。倍数取决于页面分辨率：实测低分辨率的真实导出
+是 15.9 MB → 19.3 MB（1.2 倍），而 300dpi 的合成样本能到 21.8 MB → 105 MB（5 倍）。
+部署时按上限的几倍估算磁盘和带宽。
+
+内存需求由**页面分辨率**决定，不是文件大小。实测（`cache_budget_mb` 默认 256）：
+
+| 样本 | 内存峰值 | 耗时 |
+|---|---|---|
+| 30 页 A4@150dpi | 583 MB | 13 秒 |
+| 60 页 A4@300dpi | 1.9 GB | 101 秒 |
+
+调低 `cache_budget_mb` 只能省约 10%（大头是单页处理的工作集，不是缓存），
+内存不够要靠降 `UNMARK_MAX_CONCURRENT`。所以服务器内存 2 GB 是下限，4 GB 舒服。
