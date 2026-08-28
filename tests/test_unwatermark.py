@@ -372,8 +372,9 @@ def test_solid_backdrop_is_filled_exactly_not_inpainted(bg, fg) -> None:
     mask = box_to_mask((200, 700), box, dilate=2)
     inside = mask > 0
 
-    filled = _repair(rgb, mask, radius=4)                 # 默认启用纯色铺底
-    inpainted = _repair(rgb, mask, radius=4, ring=0)       # ring=0 强制走旧路径
+    filled, filled_mask = _repair(rgb, mask, radius=4)          # 默认启用纯色铺底
+    inpainted, _ = _repair(rgb, mask, radius=4, ring=0)          # ring=0 强制走旧路径
+    inside = filled_mask > 0
 
     truth = np.array(bg, float)
     filled_dev = np.abs(filled[inside].astype(float) - truth).max()
@@ -523,3 +524,29 @@ def test_mask_follows_the_glyphs_not_the_bounding_block(tmp_path: Path) -> None:
 
     assert coverage(refined) < coverage(coarse) - 0.05, "精修没有比粗掩膜更贴合字形"
     assert coverage(refined) > 0.15, "削得太狠会留下能读出字的残影"
+
+
+def test_residue_sweep_grows_mask_and_reports_it() -> None:
+    """自查扩大掩膜后必须把生效的那张传回来。
+
+    否则调用方拿旧掩膜去复核，会把自己刚补涂的像素判成越界——这个坑踩过，
+    表现是「已写出但复核未通过：Mask 之外有 N 个像素被改动」。
+    """
+    import cv2
+    from unwatermark import _repair, box_to_mask
+
+    rng = np.random.default_rng(4)
+    H, W = 90, 260
+    art = np.clip(np.full((H, W, 3), 60, np.int16)
+                  + rng.normal(0, 5, (H, W, 3)), 0, 255).astype(np.uint8)
+    marked = art.copy()
+    cv2.putText(marked, "NotebookLM", (60, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
+
+    tight = box_to_mask((H, W), (62, 40, 200, 60), dilate=0)
+    repaired, effective = _repair(marked, tight, radius=4, sweeps=2)
+
+    assert effective.sum() >= tight.sum(), "自查只会让掩膜变大或不变"
+    assert effective.sum() <= tight.sum() * 4, "掩膜膨胀失控就会啃到画面"
+    # 返回的掩膜必须真的能通过「掩膜外逐位不变」这条复核
+    outside = effective == 0
+    assert np.array_equal(repaired[outside], marked[outside])

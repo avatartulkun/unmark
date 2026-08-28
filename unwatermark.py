@@ -57,6 +57,15 @@ class CleanOptions:
     """
     ink_min_ratio: float = 0.12
     """精修后至少要保留粗定位的多大比例，否则认为精修失效、退回粗掩膜。"""
+    residue_sweeps: int = 2
+    """修完之后再自查几轮：边缘还留着墨迹就并进掩膜重修。
+
+    抗锯齿那圈有多宽，取决于角标颜色和底色的反差——深底上的白字比浅底上的深字
+    扩散得宽得多，靠一个固定的外扩像素数盖不住。与其猜半径，不如修完看结果。
+    只允许长进紧贴掩膜的一圈，不会啃到画面。
+    """
+    residue_ratio: float = 0.55
+    """自查时的墨迹判据，取 contrast_delta 的这个比例。"""
     ink_dilate: int = 1
     """精修成功后，对字形掩膜再外扩多少像素，用来盖住抗锯齿边。
 
@@ -556,6 +565,36 @@ def _graft_texture(
     return out
 
 
+def _fill_once(
+    rgb: np.ndarray, mask: np.ndarray, radius: int, ring: int, flat_tolerance: float, graft: bool
+) -> np.ndarray:
+    backdrop = _flat_backdrop(rgb, mask, ring, flat_tolerance)
+    if backdrop is not None:
+        filled = rgb.copy()
+        filled[mask > 0] = backdrop
+        return filled
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    filled = cv2.cvtColor(cv2.inpaint(bgr, mask, radius, cv2.INPAINT_TELEA), cv2.COLOR_BGR2RGB)
+    if graft:
+        filled = _graft_texture(filled, rgb, mask)
+    return filled
+
+
+def _residue_ring(
+    filled: np.ndarray, mask: np.ndarray, ink_kernel: int, threshold: float
+) -> np.ndarray:
+    """修完之后，紧贴掩膜的一圈里还有没有没擦干净的墨迹。
+
+    只看这一圈：再往外就是真实画面，本来就该有细节，动它就是啃图。
+    """
+    band = (cv2.dilate(mask, np.ones((3, 3), np.uint8)) > 0) & (mask == 0)
+    if not band.any():
+        return np.zeros_like(mask)
+    gray = cv2.cvtColor(filled, cv2.COLOR_RGB2GRAY)
+    ink = cv2.absdiff(gray, cv2.medianBlur(gray, ink_kernel))
+    return ((ink >= threshold) & band).astype(np.uint8) * 255
+
+
 def _repair(
     rgb: np.ndarray,
     mask: np.ndarray,
@@ -563,22 +602,28 @@ def _repair(
     ring: int = 6,
     flat_tolerance: float = 4.0,
     graft: bool = True,
+    sweeps: int = 2,
+    ink_kernel: int = 7,
+    residue_threshold: float = 10.0,
 ) -> np.ndarray:
-    """修复 Mask 内像素；Mask 外强制逐位还原，并断言这一点。"""
-    backdrop = _flat_backdrop(rgb, mask, ring, flat_tolerance)
-    if backdrop is not None:
-        repaired = rgb.copy()
-        repaired[mask > 0] = backdrop
-    else:
-        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        repaired = cv2.cvtColor(cv2.inpaint(bgr, mask, radius, cv2.INPAINT_TELEA), cv2.COLOR_BGR2RGB)
-        if graft:
-            repaired = _graft_texture(repaired, rgb, mask)
-    outside = mask == 0
+    """修复 Mask 内像素，返回 (修复后的图, 实际生效的掩膜)。
+
+    自查会让掩膜比传进来的略大，所以必须把生效的那张传回去——否则调用方拿旧掩膜
+    去复核，会把自己刚补涂的像素判成越界。
+    """
+    work = mask.copy()
+    repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft)
+    for _ in range(max(0, sweeps)):
+        extra = _residue_ring(repaired, work, ink_kernel, residue_threshold)
+        if not extra.any():
+            break
+        work = np.maximum(work, extra)
+        repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft)
+    outside = work == 0
     repaired[outside] = rgb[outside]
     if not np.array_equal(repaired[outside], rgb[outside]):
         raise RuntimeError("安全检查失败：Mask 外像素发生变化，已拒绝写出。")
-    return repaired
+    return repaired, work
 
 
 def _encode_png(rgb: np.ndarray, compression: int) -> bytes:
@@ -685,6 +730,7 @@ def clean_pdf(
             mask, box, strategy = detection.mask, detection.box, detection.strategy
 
         painted = int((mask > 0).sum())
+        painted_mask = mask.copy()          # 自查会逐页扩，这里累计实际涂过的并集
         area_percent = 100.0 * painted / (height * width)
         box_ratio = (box[0] / width, box[1] / height, box[2] / width, box[3] / height)
 
@@ -711,9 +757,12 @@ def clean_pdf(
             if pending_start is not None:
                 cleaned.insert_pdf(document, from_page=pending_start, to_page=index - 1)
                 pending_start = None
-            repaired = _repair(rgb, mask, options.radius,
+            repaired, page_mask = _repair(rgb, mask, options.radius,
                                options.backdrop_ring, options.backdrop_tolerance,
-                               options.graft_texture)
+                               options.graft_texture, options.residue_sweeps,
+                               options.ink_kernel,
+                               options.contrast_delta * options.residue_ratio)
+            painted_mask = np.maximum(painted_mask, page_mask)
             image = _encode_png(repaired, options.png_compression)
             if not verified_roundtrip:
                 # 只在第一页做一次编解码往返核对，确认 PNG 这条路确实无损。
@@ -746,7 +795,15 @@ def clean_pdf(
         destination.unlink(missing_ok=True)
         return AutoCleanResult(False, "所有满版位图页都无法解码，原文件未改动", skipped=skipped)
 
-    problems = _verify(source, destination, mask, processed, options.verify_sample)
+    # 自查可能让每页多涂一点，复核必须拿这些页实际用过的掩膜的并集，
+    # 否则要么误报越界，要么放过真正的越界。
+    if int(painted_mask.sum()) > 4 * max(1, int(mask.sum())):
+        return AutoCleanResult(
+            success=False,
+            message="自查阶段掩膜异常膨胀，已中止（可能把画面误判为残留）",
+            skipped=skipped,
+        )
+    problems = _verify(source, destination, painted_mask, processed, options.verify_sample)
     if problems:
         return AutoCleanResult(
             success=False,
