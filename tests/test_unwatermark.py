@@ -581,3 +581,31 @@ def test_area_check_runs_after_the_mask_is_refined(tmp_path: Path) -> None:
 
     assert result.success, f"纯深底白字标被误拒：{result.message}"
     assert result.area_percent < 0.5, "削形之后仍然虚胖"
+
+
+def test_grain_amplitude_ignores_bright_neighbours() -> None:
+    """颗粒强度要用中位绝对偏差估，不能用标准差。
+
+    取样圈常常蹭到装饰线、星光这类高对比元素。实测一份真实绘本里，圈内 |细节| 的
+    中位数只有 2，标准差却被少数极端值拉到 16——照标准差注入噪声，修复区就是一片
+    黑白麻点，比不修还难看。
+    """
+    import cv2
+    from unwatermark import _graft_texture, box_to_mask
+
+    rng = np.random.default_rng(7)
+    H, W = 120, 320
+    base = np.clip(np.full((H, W, 3), 40, np.float32)
+                   + rng.normal(0, 2, (H, W, 1)), 0, 255).astype(np.uint8)
+    # 紧贴掩膜上方画一条高亮装饰线，模拟真实版面
+    cv2.line(base, (0, 44), (W, 44), (250, 246, 220), 2)
+
+    mask = box_to_mask((H, W), (120, 56, 250, 74), dilate=1)
+    smooth = base.copy()
+    smooth[mask > 0] = np.array([40, 40, 40], np.uint8)
+
+    grained = _graft_texture(smooth, base, mask)
+
+    inside = mask > 0
+    injected = grained[inside].astype(float).std()
+    assert injected < 9, f"注入的噪声幅度 {injected:.1f} 过大，会变成黑白麻点"

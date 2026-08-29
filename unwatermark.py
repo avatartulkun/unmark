@@ -558,7 +558,11 @@ def _graft_texture(
     if not band.any():
         return repaired
     detail = rgb.astype(np.float32) - cv2.GaussianBlur(rgb, (0, 0), sigmaX=sigma).astype(np.float32)
-    amplitude = float(detail[band].std())
+    # 用中位绝对偏差而不是标准差：取样圈常常蹭到装饰线、星光这类高对比元素，
+    # std 会被少数极端值拉高好几倍（实测 8 倍），照它注入噪声就是一片黑白麻点。
+    # 1.4826 是把 MAD 换算成正态分布标准差的常数。
+    amplitude = 1.4826 * float(np.median(np.abs(detail[band])))
+    amplitude = min(amplitude, 8.0)          # 再兜一道：颗粒感不该盖过画面本身
     if amplitude < 0.5:                      # 周围本来就平滑，补噪声反而是画蛇添足
         return repaired
 
