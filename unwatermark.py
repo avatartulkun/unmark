@@ -101,6 +101,33 @@ class CleanOptions:
 
     定得太松，高频画面也会被硬拟合成一张平滑曲面，反而不如 inpaint。
     """
+    defrost: bool = True
+    """是否还原角标背后那层磨砂衬底。
+
+    NotebookLM 给标签垫的**不是一层色板，是把底下的画面做了高斯模糊**（实测 σ≈4）。
+    这一条是量出来的：拿板外没被盖住的画面按 σ=4 模糊，去预测板内实测值，
+    在关键几行只差 0.5～2.6 个灰阶。
+
+    这解释了 `remove_panel` 那条路为什么走不通——根本没有一层白色可以减掉。
+    模糊是丢信息的操作，板下的细节不在文件里，任何算法都变不出来；能做的是
+    **从板外把结构续进去**，再把模糊没解释掉的部分按原样叠回来。见 `_defrost`。
+    """
+    defrost_tolerance: float = 3.0
+    """磨砂模型的验收线：按模型预测板内像素，中位误差超过它就整块放弃。
+
+    这是这条路上最关键的一道闸门，而且是自证的：模型成立才动手，不成立就不动。
+    画面越花，模型越解释不了，误差自然越大——不需要另外去判断「画面复不复杂」。
+    """
+    defrost_coherence: float = 3.0
+    """板外取样带在水平方向的一致性上限（中位绝对偏差，灰阶）。
+
+    重建靠的是把板外一条竖带的逐行剖面横向续进板内。前提是那一带的画面本来就
+    横向连贯（横线、平底色、横向渐变）。花哨画面上硬续会拉出条纹，所以先量后做。
+    """
+    defrost_max_lift: float = 24.0
+    """磨砂之外允许的整体亮度偏移上限。超过说明这不是磨砂，是别的东西。"""
+    defrost_max_area: float = 0.02
+    """磨砂衬底允许占整页的最大面积。"""
     panel_strength: float = 8.0
     """衬底反解的启动线：板内相对本页背景的亮度偏移超过它才动手。
 
@@ -116,13 +143,13 @@ class CleanOptions:
     panel_box: Optional[tuple[int, int, int, int]] = None
     """用户框定的衬底范围 (x0, y0, x1, y1)，图像像素坐标。**目前不要用。**
 
-    本以为「范围由人指定」就能绕开自动猜板的不可靠，实测仍然不成立：那片看起来
-    像衬底的区域，实测比周围背景**更暗**（真实背景 74.5，该区域 66.0），而模型
-    按「白色半透明叠加」去解，只会越减越暗（→ 57.4）。宽框、紧框、更紧的框，
-    三种画法结论一致。
+    本以为「范围由人指定」就能绕开自动猜板的不可靠，实测仍然不成立——但当时归因
+    也错了：曾判定「那片区域比背景更暗」，其实是拿来当参照的区域里混进了角标白字，
+    均值被拉高。
 
-    也就是说残留的不是一层亮色衬底，而是填充本身比周围背景偏暗几级——那是另一个
-    问题，得用另一种办法解。接口留着，等修正本身立得住再启用。
+    真正的原因见 `defrost`：衬底根本不是一层可减的颜色，是把画面模糊了。
+    按「半透明叠加」去解，无论范围由谁指定都不可能对。接口留着不删，是为了
+    记住这个教训的形状。
     """
     remove_panel: bool = False
     """是否启用衬底反解。**默认关闭——实测这条路走不通。**
@@ -138,7 +165,9 @@ class CleanOptions:
     更要命的是「反解后对比度必须回升」那道闸门被骗过了：人为造出的硬边缘
     反而让对比度指标变好看。又一次指标骗人、图不骗人。
 
-    留着开关和这段记录，是为了别再走一遍。"""
+    **后来查清了根因**：衬底不是一层色板，是把底下的画面做了高斯模糊。
+    没有颜色可减，所以整个 alpha 模型从一开始就套错了对象，加多少道闸门都白搭。
+    正确的做法在 `defrost`。留着开关和这段记录，是为了别再走一遍。"""
     graft_texture: bool = True
     """走 inpaint 那条路时，是否把邻近的高频纹理移植到修复区。
 
@@ -952,6 +981,282 @@ def _remove_panel(
     return result, changed
 
 
+def _band_profile(
+    rgb: np.ndarray, y0: int, y1: int, x0: int, x1: int
+) -> tuple[Optional[np.ndarray], float]:
+    """取一条竖带的逐行中位剖面，并量它在水平方向有多一致。
+
+    返回 (剖面, 中位绝对偏差)。偏差小说明这一带的画面本来就横向连贯
+    （横线、平底色、横向渐变），把剖面续到旁边去才站得住。
+    """
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return None, float("inf")
+    band = rgb[y0:y1, x0:x1].astype(np.float32)
+    profile = np.median(band, axis=1)
+    return profile, float(np.median(np.abs(band - profile[:, None, :])))
+
+
+def _panel_edge(
+    inside: np.ndarray,
+    outside: Optional[np.ndarray],
+    minimum: float,
+    outermost: str = "first",
+    consistency: float = 0.75,
+    contrast: float = 0.4,
+) -> Optional[tuple[int, float]]:
+    """找衬底的一条直边，返回 (位置, 台阶高度)。沿 axis0 扫，两个参数是同样的扫描
+    方向、不同的取样范围：`inside` 跨过板、`outside` 完全在板外。
+
+    只按「台阶最大」找是不行的：搜索窗里最强的边几乎总是画面自己的（一条装饰横线
+    的上下沿轻松有二十几个灰阶，而衬底才五六个）。衬底边的特征不是强，是**到板就
+    没了**——同一个位置，板外那段不该有这个台阶。这一条把画面的边全筛掉了。
+
+    台阶沿 axis1 取中位数，再要求大部分列同号：衬底的边是一整条直线，每列都有；
+    斜穿过去的装饰线只占少数列，抬不动中位数。
+
+    合格的位置取**最外侧**那个（`outermost` 指明扫描方向是由外向内还是相反），
+    不取台阶最大的那个：板内被模糊摊开的亮结构，其上升沿同样是一道「板外没有的
+    台阶」，而且往往比板边本身更陡——按最大值挑会把边界定到板内去。
+    """
+    length = inside.shape[0]
+    # 带子短的时候（板底紧贴页面下缘就会这样）固定取 3 会把最后几行扫不到
+    thickness = max(1, min(3, length // 4))
+    best: Optional[tuple[int, float]] = None
+    for index in range(thickness, length - thickness):
+        column = (inside[index:index + thickness].mean(axis=0)
+                  - inside[index - thickness:index].mean(axis=0))
+        step = float(np.median(column))
+        if abs(step) < minimum:
+            continue
+        if float((np.sign(column) == np.sign(step)).mean()) < consistency:
+            continue
+        if outside is not None and outside.shape[1] >= 6:
+            beyond = (outside[index:index + thickness].mean(axis=0)
+                      - outside[index - thickness:index].mean(axis=0))
+            if abs(float(np.median(beyond))) > abs(step) * contrast:
+                continue                     # 板外也有这道台阶，那是画面的边
+        if best is None or outermost == "last":
+            best = (index, step)
+        if outermost == "first":
+            break
+    return best
+
+
+_FROST_SIGMAS = (1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0)
+_FROST_MIN_STEP = 2.5
+
+
+def _frost_panel(
+    repaired: np.ndarray, box: tuple[int, int, int, int]
+) -> Optional[tuple[int, int, int, int]]:
+    """找出磨砂衬底的矩形范围，靠的是它四条边上的台阶。
+
+    衬底是深是浅取决于它底下画的是什么，所以不能问「亮了还是暗了」，只能问
+    「四条边的台阶是不是同向、是不是一整条」。三条边（上、下、左）都得对上，
+    右边允许一直延伸到页面边缘——实测它就是这么画的。
+
+    也试过按区域找：先按「颗粒消失」（模糊必然抹平高频），实测板外那圈平滑背景
+    颗粒 1.06、板内 0.2～1.9，分不开；再按「横向续接解释不了的地方」，结果把
+    板外斜穿上去的装饰弧线一起圈了进来，包围盒被拉大一倍。边界才是衬底的定义。
+    """
+    height, width = repaired.shape[:2]
+    x0, y0, x1, y1 = box
+    box_height, box_width = max(y1 - y0, 1), max(x1 - x0, 1)
+    # 衬底总是贴着角标长，搜索范围按角标自身尺寸放大，不去扫整页
+    wy0, wy1 = max(0, y0 - int(box_height * 2.5)), min(height, y1 + int(box_height * 2.5))
+    wx0, wx1 = max(0, x0 - int(box_width * 0.6)), min(width, x1 + int(box_width * 0.3))
+    if y0 - wy0 < 8 or wy1 - y1 < 8 or x0 - wx0 < 16:
+        return None
+
+    gray = cv2.cvtColor(repaired, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    # 上下边：板内那段（角标的横向跨度）有台阶，而它左边那段没有
+    beyond = gray[:, wx0:x0]
+    top = _panel_edge(gray[wy0:y0, x0:x1], beyond[wy0:y0], _FROST_MIN_STEP, "first")
+    if top is None:
+        return None
+    sign = np.sign(top[1])                   # 衬底相对画面是抬亮还是压暗，四条边得一致
+    py0 = wy0 + top[0]
+
+    bottom = _panel_edge(gray[y1:wy1, x0:x1], beyond[y1:wy1], _FROST_MIN_STEP, "last")
+    if bottom is None or np.sign(-bottom[1]) != sign:
+        return None
+    py1 = y1 + bottom[0]
+
+    # 左边界可能落在角标框内侧一点点，扫描范围往右多给两成；
+    # 「板外」这次取板上方那几行——竖直的板边在那里同样不该存在
+    limit = min(width, x0 + int(box_width * 0.2))
+    left = _panel_edge(gray[py0:py1, wx0:limit].T,
+                       gray[max(0, py0 - 12):py0, wx0:limit].T, _FROST_MIN_STEP, "first")
+    if left is None or np.sign(left[1]) != sign:
+        return None
+    px0 = wx0 + left[0]
+
+    # 右边界经常就是页面边缘，找不到台阶不算失败
+    right_from = max(x1, px0 + 8)
+    right = _panel_edge(gray[py0:py1, right_from:wx1].T,
+                        gray[max(0, py0 - 12):py0, right_from:wx1].T, _FROST_MIN_STEP, "last")
+    px1 = right_from + right[0] if right is not None and np.sign(-right[1]) == sign else wx1
+
+    if px0 > x0 + int(box_width * 0.2) or px1 < x1 or py0 > y0 or py1 < y1:
+        return None                          # 板得把角标整个包住，否则认错了
+    if py1 - py0 < box_height or px1 - px0 < box_width:
+        return None
+    return px0, py0, px1, py1
+
+
+def _defrost(
+    repaired: np.ndarray,
+    rgb: np.ndarray,
+    mask: np.ndarray,
+    box: tuple[int, int, int, int],
+    tolerance: float,
+    coherence: float,
+    max_lift: float,
+    max_area: float,
+) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    """还原被磨砂衬底模糊掉的画面，返回 (修好的图, 动过的区域)。
+
+    模型是量出来的，不是猜的——NotebookLM 给标签垫的不是一层色板，是把底下的
+    画面做了高斯模糊：
+
+        观察值 = 高斯模糊(原画, σ) + 整体偏移
+
+    拿板外没被盖住的画面按 σ=4 模糊去预测板内实测值，在关键几行只差 0.5～2.6 个
+    灰阶。σ 和偏移都从本页数据里拟合，不写死。
+
+    原画在板内是未知的，但衬底两侧的画面还在，而这类页面在衬底那一带本来就是横向
+    连贯的（横线、平底色、横向渐变），所以把板外一条竖带的逐行剖面横向续进来，
+    就是对原画的一个可用估计。记它为 T、真实原画为 T + Δ，剩下的是代数：
+
+        观察值 - 偏移 = 模糊(T) + 模糊(Δ)
+        还原值 = T + (观察值 - 偏移 - 模糊(T)) = T + 模糊(Δ)
+
+    也就是：**知道的那部分结构按锐利的补回去，不知道的那部分（Δ，比如斜穿过去的
+    装饰弧线）保持它模糊的样子叠在上面。** 两头都不极端——既不抹掉弧线，也不去
+    编造它的锐利形状；而这里本来就没有磨砂时（σ→0、偏移→0）式子退化成
+    「还原值 = 观察值」，一个像素都不会动。
+
+    模糊丢掉的高频是真找不回来了。这里做的是**从板外把结构续进去**，不是从模糊里
+    解出原画——后者不可能。
+    """
+    height, width = mask.shape
+    found = _frost_panel(repaired, box)
+    if found is None:
+        return None, None
+    px0, py0, px1, py1 = found
+    if (py1 - py0) * (px1 - px0) > max_area * height * width:
+        return None, None
+
+    strip, pad = 24, 24                      # 剖面要向上下各多取一段，模糊才有料可卷
+    qy0, qy1 = max(0, py0 - pad), min(height, py1 + pad)
+    left, left_spread = _band_profile(repaired, qy0, qy1, max(0, px0 - strip), px0)
+    right, right_spread = _band_profile(repaired, qy0, qy1, px1, min(width, px1 + strip))
+    use_left = left is not None and left_spread <= coherence
+    use_right = right is not None and right_spread <= coherence
+    if not (use_left or use_right):
+        return None, None                    # 两侧的画面横向都不连贯，剖面续不过去
+
+    positions = np.arange(px0, px1, dtype=np.float32)
+    if use_left and use_right:
+        # 两侧都能用就横向线性过渡，板宽一点也不会在另一头对不上
+        weight = ((px1 - 1 - positions) / max(px1 - 1 - px0, 1))[None, :, None]
+        base = left[:, None, :] * weight + right[:, None, :] * (1.0 - weight)
+    else:
+        base = np.repeat((left if use_left else right)[:, None, :], px1 - px0, axis=1)
+    base = np.ascontiguousarray(base, dtype=np.float32)
+
+    observed = repaired[py0:py1, px0:px1].astype(np.float32)
+    known = mask[py0:py1, px0:px1] == 0      # 角标压着的地方，底下是什么已经没了
+    if int(known.sum()) < 200 or int(known.sum(axis=1).min()) < 8:
+        return None, None
+    inside = slice(py0 - qy0, py1 - qy0)
+
+    # 板内的逐行中位剖面。角标是字形掩膜，字与字之间留着的都是真的板内像素，
+    # 所以即使在文字那几行也取得到足够样本。
+    columns = np.ma.masked_array(observed, ~np.repeat(known[:, :, None], 3, axis=2))
+    profile_in = np.ma.median(columns, axis=1).filled(np.nan)
+    if not np.isfinite(profile_in).all():
+        return None, None
+
+    # 闸门：板内剖面必须能被「板外剖面模糊一下再整体平移」解释。这是个一维拟合，
+    # 只有二三十行，比逐像素拟合稳得多，而它问的正是「这块到底是不是磨砂」。
+    base_profile = np.ascontiguousarray(np.median(base, axis=1), dtype=np.float32)
+    best: Optional[tuple[float, np.ndarray]] = None
+    for sigma in _FROST_SIGMAS:
+        predicted = cv2.GaussianBlur(base_profile, (1, 0), sigmaX=0, sigmaY=sigma)[inside]
+        lift = np.median(profile_in - predicted, axis=0)
+        error = float(np.median(np.abs(profile_in - predicted - lift)))
+        if best is None or error < best[0]:
+            best = (error, lift)
+    error, lift = best
+    # 自证的闸门：模型解释得了才动手。画面越花，横向续接越不成立，误差越大，
+    # 自动就退出了——不必另外去猜「这页画面复不复杂」。
+    if error > tolerance or float(np.abs(lift).max()) > max_lift:
+        return None, None
+
+    # 真正的重建只用一条恒等式，不依赖上面拟合出来的 σ 和偏移：
+    #
+    #     还原值 = 板内像素 + （续过来的剖面 - 板内该行的中位数）
+    #
+    # 括号里是逐行的常数，等价于「把板内这一行的整体水平抬回它本该有的位置」。
+    # σ、偏移拟合的误差同样是逐行常数，正好在这一步被抵消掉——一开始把拟合结果
+    # 直接用进重建，σ 差一点就在线的上方压出一道暗带。
+    deviation = observed - profile_in[:, None, :]
+    correction = base[inside] - profile_in[:, None, :]
+
+    # 但「这一行整体抬多少」只对横向连贯的地方成立。板内横向起伏大的地方——斜穿
+    # 过去的装饰弧线、以及横线拐弯离开之后的那一段——续接本来就不该生效，
+    # 否则会把一条本该拐上去的线直愣愣地画到页边。所以逐像素按起伏大小退让。
+    # 起伏要先平滑再算权重，而且**只能数角标之外的像素**：
+    #  · 不平滑，权重会跟着颗粒抖，而它乘的是一个逐行常数，结果整块斑驳；
+    #  · 把角标那片算进来，填充留下的起伏会顺着滤波窗漏到相邻几行，
+    #    把线上那几行的权重压到 0.6~0.8，重建出来的线只有真实亮度的八成。
+    valid = known.astype(np.float32)
+    total = cv2.boxFilter(valid, -1, (5, 5), normalize=False)
+    swing = cv2.boxFilter(np.abs(deviation).max(axis=2) * valid, -1, (5, 5), normalize=False)
+    swing = np.where(total > 0.5, swing / np.maximum(total, 1e-3), 0.0)
+    # 权重要以「本页板内典型起伏」为基准，不能拿 0 当基准：颗粒本身就有两三个灰阶，
+    # 按 1 - 起伏/上限 算的话，平平无奇的地方权重就掉到 0.75，线只能重建出八成亮度。
+    typical = float(np.median(swing[known]))
+    floor, limit = max(2.0, 2.0 * typical), max(10.0, 6.0 * typical)
+    weight = cv2.GaussianBlur(
+        np.clip((limit - swing) / (limit - floor), 0.0, 1.0).astype(np.float32), (0, 0), 1.5)
+    restored = observed + correction * weight[:, :, None]
+
+    # 角标压着的那片没有任何可信信息，整片换成续过来的剖面；羽化免得留边
+    hole = np.clip(cv2.GaussianBlur((mask[py0:py1, px0:px1] > 0).astype(np.float32),
+                                    (0, 0), 1.5), 0.0, 1.0)[:, :, None]
+    restored = restored * (1.0 - hole) + base[inside] * hole
+
+    # 兜底：重建值不许超出取样带见过的范围，杜绝外推跑飞
+    stack = np.concatenate([p for p, ok in ((left, use_left), (right, use_right)) if ok])
+    restored = np.clip(restored, stack.min(axis=0) - 6.0, stack.max(axis=0) + 6.0)
+
+    # 板边界向内羽化两像素。边界处重建值本就等于板外画面，这一步只是兜底不留台阶
+    feather = np.zeros((height, width), np.float32)
+    feather[py0:py1, px0:px1] = 1.0
+    feather = cv2.GaussianBlur(feather, (0, 0), 1.2)[py0:py1, px0:px1][:, :, None]
+
+    result = repaired.copy()
+    result[py0:py1, px0:px1] = np.clip(
+        observed * (1.0 - feather) + restored * feather, 0.0, 255.0
+    ).round().astype(np.uint8)
+
+    # 这里**不**补颗粒。模糊确实把颗粒也抹掉了（板外 1.68、板内 0.23），补完
+    # 量化上更接近（1.98 vs 1.68），但放大看是一片比原来那层雾还扎眼的斑块——
+    # 合成噪声是相关的团块，和纸纹那种细密颗粒不是一回事。又一次指标骗人。
+    # 何况板内的平滑本来就是原件里的样子，去掉染色、把结构续回去是还原，
+    # 凭空造颗粒不是。
+    panel = np.zeros((height, width), np.uint8)
+    panel[py0:py1, px0:px1] = 255
+
+    changed = np.abs(result.astype(np.int16) - repaired.astype(np.int16)).max(axis=2) > 0
+    touched = (panel > 0) & changed
+    if not touched.any():
+        return None, None
+    return result, touched
+
+
 def _repair(
     rgb: np.ndarray,
     mask: np.ndarray,
@@ -969,6 +1274,11 @@ def _repair(
     panel_max_alpha: float = 0.55,
     panel_rect: Optional[tuple[int, int, int, int]] = None,
     bounds: Optional[tuple[int, int, int, int]] = None,
+    defrost: bool = True,
+    defrost_tolerance: float = 3.0,
+    defrost_coherence: float = 3.0,
+    defrost_max_lift: float = 24.0,
+    defrost_max_area: float = 0.02,
 ) -> np.ndarray:
     """修复 Mask 内像素，返回 (修复后的图, 实际生效的掩膜)。
 
@@ -986,6 +1296,18 @@ def _repair(
         work = np.maximum(work, extra)
         probe = _fill_once(rgb, work, radius, ring, flat_tolerance, False, "telea", surface_tolerance)
     repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft, quality, surface_tolerance)
+    if defrost and bounds is not None:
+        # 先把掩膜外的像素还原。_fill_once 会波及掩膜之外（inpaint 的扩散边、
+        # 补颗粒时按包围盒整块加噪声），这些本来都由函数末尾统一还原；但磨砂那步
+        # 要从板外取剖面、要量板内起伏，喂给它一张被污染的图，取样带和板内统计
+        # 全都会偏——实测最后一页因此过不了模型闸门。
+        repaired[work == 0] = rgb[work == 0]
+        # 必须在填充之后：那时角标已被抹平，板内才只剩磨砂本身的痕迹
+        thawed, touched = _defrost(repaired, rgb, work, bounds, defrost_tolerance,
+                                   defrost_coherence, defrost_max_lift, defrost_max_area)
+        if thawed is not None:
+            repaired = thawed
+            work = np.maximum(work, (touched * 255).astype(np.uint8))
     if (panel or panel_rect is not None) and bounds is not None:
         restored, touched = _remove_panel(repaired, work, bounds, panel_strength,
                                           panel_max_alpha, panel_rect)
@@ -1138,7 +1460,10 @@ def clean_pdf(
                                options.contrast_delta * options.residue_ratio,
                                options.fill_quality, options.surface_tolerance,
                                options.remove_panel, options.panel_strength,
-                               options.panel_max_alpha, options.panel_box, box)
+                               options.panel_max_alpha, options.panel_box, box,
+                               options.defrost, options.defrost_tolerance,
+                               options.defrost_coherence, options.defrost_max_lift,
+                               options.defrost_max_area)
             painted_mask = np.maximum(painted_mask, page_mask)
             image = _encode_png(repaired, options.png_compression)
             if not verified_roundtrip:
@@ -1174,12 +1499,13 @@ def clean_pdf(
 
     # 自查可能让每页多涂一点，复核必须拿这些页实际用过的掩膜的并集，
     # 否则要么误报越界，要么放过真正的越界。
-    # 两道上限：自查最多把掩膜撑到 4 倍；衬底反解会合法地多涂一片，所以再给一个
-    # 按整页面积算的天花板。两条都超才算失控——只超前者可能只是衬底生效了。
+    # 两道上限：自查最多把掩膜撑到 4 倍；磨砂衬底那一步会合法地多动一整块板
+    # （实测约整页 0.27%，远超角标本身的 4 倍），所以再给一个按整页面积算的天花板。
+    # 两条都超才算失控——只超前者多半只是衬底那步生效了。
     painted_total = int((painted_mask > 0).sum())   # 数像素个数，不是把 255 加起来
     # 天花板：自动模式按整页比例；用户框定衬底时按他画的框算——能动多少由那个框决定，
     # 再多给两成余量容纳羽化边。这样闸门仍能拦住失控，又不会否掉用户的正当选择。
-    ceiling = options.panel_max_area * height * width
+    ceiling = max(options.panel_max_area, options.defrost_max_area) * height * width
     if options.panel_box is not None:
         bx0, by0, bx1, by1 = options.panel_box
         ceiling = max(ceiling, abs(bx1 - bx0) * abs(by1 - by0) * 1.2 + (mask > 0).sum())

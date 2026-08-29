@@ -723,3 +723,150 @@ def test_area_guard_counts_pixels_not_values(tmp_path: Path) -> None:
 
     assert result.success, result.message
     assert 0 < result.area_percent < 100, f"面积算错了：{result.area_percent}"
+
+
+# ---------------------------------------------------------------- 磨砂衬底
+
+def _frosted_page(sigma: float = 4.0, lift: float = 6.0, busy: bool = False):
+    """造一张「深底 + 一条横向亮线」的画面，再按磨砂衬底的做法盖一块板。
+
+    磨砂 = 把板内的画面高斯模糊再整体抬一点亮，这是从真实导出件里量出来的模型
+    （σ≈4、抬亮 5~6 个灰阶）。返回 (原画, 盖了板的图, 板的范围)。
+    """
+    import cv2
+
+    H, W = 120, 400
+    rng = np.random.default_rng(7)
+    art = np.full((H, W, 3), 40, np.float32)
+    if busy:                                  # 横向不连贯：剖面续接不该生效
+        for _ in range(90):
+            cv2.circle(art, (int(rng.integers(0, W)), int(rng.integers(0, H))),
+                       int(rng.integers(4, 16)), tuple(float(v) for v in rng.integers(20, 220, 3)), -1)
+    else:
+        art[58:60] = 224.0                    # 一条贯穿整幅的横线
+        art[60:62] = 150.0
+    art += rng.normal(0, 1.5, (H, W, 1))
+    art = np.clip(art, 0, 255)
+
+    panel = (240, 50, W, 100)                 # x0, y0, x1, y1
+    px0, py0, px1, py1 = panel
+    blurred = cv2.GaussianBlur(art, (0, 0), sigmaX=0.01, sigmaY=sigma)
+    marked = art.copy()
+    marked[py0:py1, px0:px1] = np.clip(blurred[py0:py1, px0:px1] + lift, 0, 255)
+    return art.astype(np.uint8), marked.astype(np.uint8), panel
+
+
+def test_frost_panel_is_found_by_its_edges() -> None:
+    """磨砂板要靠四条边的台阶找，不能靠「颗粒消失」。
+
+    颗粒判据在真实页面上不可用：实测板外那圈平滑背景颗粒 1.06、板内 0.2~1.9，
+    两者根本分不开。边界才是衬底的定义。
+    """
+    from unwatermark import _frost_panel
+
+    _art, marked, panel = _frosted_page()
+    found = _frost_panel(marked, (250, 70, 380, 88))
+    assert found is not None, "合成的磨砂板没被认出来"
+    for got, want in zip(found, panel):
+        assert abs(got - want) <= 3, f"板的范围偏差过大：{found} vs {panel}"
+
+
+def test_defrost_restores_the_line_across_the_panel() -> None:
+    """板内那条被模糊掉的横线要按板外的亮度续回来。
+
+    这是整条路的目的：模糊丢掉的高频找不回来，但结构可以从板外续进去。
+    """
+    from unwatermark import _defrost
+
+    art, marked, panel = _frosted_page()
+    mask = np.zeros(marked.shape[:2], np.uint8)      # 这里只验衬底，不掺角标
+    result, touched = _defrost(marked, marked, mask, (250, 70, 380, 88),
+                               tolerance=3.0, coherence=3.0, max_lift=24.0, max_area=0.5)
+    assert result is not None, "磨砂模型没被接受"
+    px0, py0, px1, py1 = panel
+    line_truth = float(art[58:60, px0 + 20:px1 - 20].mean())
+    line_before = float(marked[58:60, px0 + 20:px1 - 20].mean())
+    line_after = float(result[58:60, px0 + 20:px1 - 20].mean())
+    assert line_before < line_truth * 0.6, "样例没造对：线本该被模糊压掉"
+    assert line_after > line_truth * 0.85, f"线只重建出 {line_after / line_truth:.0%}"
+
+    flat_truth = float(art[py1 - 8:py1, px0 + 20:px1 - 20].mean())
+    flat_after = float(result[py1 - 8:py1, px0 + 20:px1 - 20].mean())
+    assert abs(flat_after - flat_truth) <= 3.0, "平坦处的整体抬亮没去干净"
+    assert not touched[:, :px0 - 2].any(), "板外的像素被动了"
+
+
+def test_defrost_refuses_horizontally_busy_art() -> None:
+    """画面横向不连贯时必须整块放弃——硬续剖面会拉出条纹。"""
+    from unwatermark import _defrost
+
+    _art, marked, _panel = _frosted_page(busy=True)
+    mask = np.zeros(marked.shape[:2], np.uint8)
+    result, _touched = _defrost(marked, marked, mask, (250, 70, 380, 88),
+                                tolerance=3.0, coherence=3.0, max_lift=24.0, max_area=0.5)
+    assert result is None
+
+
+def test_defrost_does_nothing_without_a_panel() -> None:
+    """没有磨砂衬底的页面，一个像素都不许动。"""
+    from unwatermark import _defrost
+
+    art, _marked, _panel = _frosted_page()
+    mask = np.zeros(art.shape[:2], np.uint8)
+    result, _touched = _defrost(art, art, mask, (250, 70, 380, 88),
+                                tolerance=3.0, coherence=3.0, max_lift=24.0, max_area=0.5)
+    assert result is None
+
+
+def test_defrost_adds_no_synthetic_grain() -> None:
+    """板内不补颗粒。
+
+    模糊确实连颗粒一起抹掉了，补回去在量化指标上更接近（1.98 vs 板外真值 1.68），
+    但放大看是一片比原来那层雾还扎眼的团块——合成噪声是相关的，和纸纹不是一回事。
+    板内的平滑本来就是原件里的样子，去掉染色、把结构续回来是还原，造颗粒不是。
+    """
+    import cv2
+    from unwatermark import _defrost
+
+    _art, marked, panel = _frosted_page()
+    mask = np.zeros(marked.shape[:2], np.uint8)
+    result, _touched = _defrost(marked, marked, mask, (250, 70, 380, 88),
+                                tolerance=3.0, coherence=3.0, max_lift=24.0, max_area=0.5)
+    assert result is not None
+    px0, _py0, px1, py1 = panel
+    patch = result[py1 - 12:py1, px0 + 20:px1 - 20].astype(np.float32)
+    detail = patch - cv2.GaussianBlur(patch, (0, 0), 1.6)
+    assert 1.4826 * float(np.median(np.abs(detail))) < 1.0, "板内被注入了合成颗粒"
+
+
+def test_defrost_sees_the_image_with_overspill_already_restored(tmp_path: Path) -> None:
+    """磨砂那步必须拿到「掩膜外已还原」的图。
+
+    _fill_once 会波及掩膜之外（inpaint 的扩散边、补颗粒时按包围盒整块加噪声），
+    这些本由 _repair 末尾统一还原。先前把未还原的图喂给磨砂那步，取样带和板内
+    统计都被污染，实测真实样本的最后一页因此过不了模型闸门。
+    """
+    import unwatermark
+
+    seen: list[bool] = []
+    original = unwatermark._defrost
+
+    def spy(repaired, rgb, mask, *args, **kwargs):
+        outside = mask == 0
+        seen.append(bool(np.array_equal(repaired[outside], rgb[outside])))
+        return original(repaired, rgb, mask, *args, **kwargs)
+
+    deck = tmp_path / "deck.pdf"
+    _build_deck(deck)
+    unwatermark._defrost = spy
+    try:
+        clean_pdf(deck, tmp_path / "out.pdf", CleanOptions())
+    finally:
+        unwatermark._defrost = original
+    assert seen, "磨砂那步没被调用"
+    assert all(seen), "磨砂那步拿到的图里，掩膜外的像素还带着填充的溢出"
+
+
+def test_defrost_is_on_by_default() -> None:
+    """和 remove_panel 相反，这条路是量出来的，默认开启。"""
+    assert CleanOptions().defrost is True
