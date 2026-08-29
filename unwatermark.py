@@ -113,6 +113,17 @@ class CleanOptions:
     """反解允许的最大 alpha。太高说明底下的原画所剩无几，除以 (1-a) 会放大噪声。"""
     panel_max_area: float = 0.02
     """衬底反解之后，涂改总面积占整页的天花板。超过就判定失控并中止。"""
+    panel_box: Optional[tuple[int, int, int, int]] = None
+    """用户框定的衬底范围 (x0, y0, x1, y1)，图像像素坐标。**目前不要用。**
+
+    本以为「范围由人指定」就能绕开自动猜板的不可靠，实测仍然不成立：那片看起来
+    像衬底的区域，实测比周围背景**更暗**（真实背景 74.5，该区域 66.0），而模型
+    按「白色半透明叠加」去解，只会越减越暗（→ 57.4）。宽框、紧框、更紧的框，
+    三种画法结论一致。
+
+    也就是说残留的不是一层亮色衬底，而是填充本身比周围背景偏暗几级——那是另一个
+    问题，得用另一种办法解。接口留着，等修正本身立得住再启用。
+    """
     remove_panel: bool = False
     """是否启用衬底反解。**默认关闭——实测这条路走不通。**
 
@@ -799,6 +810,7 @@ def _remove_panel(
     box: tuple[int, int, int, int],
     strength: float,
     max_alpha: float,
+    panel_rect: Optional[tuple[int, int, int, int]] = None,
 ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
     """去掉角标背后那层自适应衬底，返回 (修好的图, 动过的区域)。
 
@@ -814,12 +826,18 @@ def _remove_panel(
     """
     height, width = mask.shape
     x0, y0, x1, y1 = box
-    box_height = max(y1 - y0, 1)
-    # 候选板：以角标框为中心适度外扩。范围给够才能盖住衬底，但不能大到失控。
-    py0 = max(0, y0 - int(box_height * 1.8))
-    py1 = min(height, y1 + int(box_height * 1.8))
-    px0 = max(0, x0 - int((x1 - x0) * 0.35))
-    px1 = min(width, x1 + int((x1 - x0) * 0.12))
+    if panel_rect is not None:
+        # 用户框定的范围：不再猜几何。自动猜板的位置正是这条路走不通的根源——
+        # 猜宽了会把干净背景也算进去，背景外推的误差就被当成衬底减掉。
+        px0, py0, px1, py1 = panel_rect
+        px0, py0 = max(0, int(px0)), max(0, int(py0))
+        px1, py1 = min(width, int(px1)), min(height, int(py1))
+    else:
+        box_height = max(y1 - y0, 1)
+        py0 = max(0, y0 - int(box_height * 1.8))
+        py1 = min(height, y1 + int(box_height * 1.8))
+        px0 = max(0, x0 - int((x1 - x0) * 0.35))
+        px1 = min(width, x1 + int((x1 - x0) * 0.12))
     if py1 - py0 < 8 or px1 - px0 < 24:
         return None, None
 
@@ -869,7 +887,8 @@ def _remove_panel(
     offset = observed.mean(axis=1) - background.mean(axis=1)
     # 闸门二：衬底太弱、或者覆盖面太小，就别动——收益抵不上误判的风险
     lifted = np.abs(offset) > strength
-    if lifted.mean() < 0.10:
+    # 覆盖面这条闸门只在自动猜板时才严：用户亲手框的范围，由他负责
+    if lifted.mean() < (0.02 if panel_rect is not None else 0.10):
         return None, None
 
     overlay = 255.0 if float(np.median(offset[lifted])) > 0 else 0.0
@@ -877,6 +896,9 @@ def _remove_panel(
     with np.errstate(divide="ignore", invalid="ignore"):
         alpha = np.where(np.abs(denominator) > 12.0, offset / denominator, 0.0)
     alpha = np.clip(np.nan_to_num(alpha, nan=0.0, posinf=0.0, neginf=0.0), 0.0, max_alpha)
+    # 没到阈值的地方先清零再平滑。否则文字附近的高 alpha 会被高斯抹到旁边
+    # 本来干净的区域，把那里平白压暗——框内也不能乱动。
+    alpha = np.where(lifted, alpha, 0.0)
 
     # alpha 图必须平滑——真实画面的亮度起伏不会像一块板那样规则
     alpha_map = np.zeros((height, width), np.float32)
@@ -888,17 +910,20 @@ def _remove_panel(
         return None, None
     # 闸门四：板边缘的 alpha 必须本就接近 0。不接近说明背景拟合被衬底本身污染了，
     # 硬减下去会在板的边界留一道台阶——实测就是一块边缘锐利的暗色矩形。
-    edge = np.zeros((height, width), bool)
-    edge[py0:py0 + 3, px0:px1] = True
-    edge[py1 - 3:py1, px0:px1] = True
-    edge[py0:py1, px0:px0 + 3] = True
-    if float(np.abs(smoothed[edge]).mean()) > 0.02:
-        return None, None
+    # 这条只对「自动猜板」有意义：猜出来的板边缘本应落在衬底之外，不然就是猜宽了。
+    # 用户亲手框定时不查——衬底本来就可能一直延伸到框边，靠下面的羽化窗防台阶。
+    if panel_rect is None:
+        edge = np.zeros((height, width), bool)
+        edge[py0:py0 + 3, px0:px1] = True
+        edge[py1 - 3:py1, px0:px1] = True
+        edge[py0:py1, px0:px0 + 3] = True
+        if float(np.abs(smoothed[edge]).mean()) > 0.02:
+            return None, None
 
     # 再乘一个到边界归零的窗，杜绝任何残余台阶
     window = np.zeros((height, width), np.float32)
     window[py0:py1, px0:px1] = 1.0
-    feather = max(4, int(min(py1 - py0, px1 - px0) * 0.25))
+    feather = min(14, max(4, int(min(py1 - py0, px1 - px0) * 0.15)))
     window = cv2.GaussianBlur(window, (0, 0), feather / 2.0)
     alpha = np.clip(smoothed[panel] * window[panel], 0.0, max_alpha)
 
@@ -942,6 +967,7 @@ def _repair(
     panel: bool = True,
     panel_strength: float = 8.0,
     panel_max_alpha: float = 0.55,
+    panel_rect: Optional[tuple[int, int, int, int]] = None,
     bounds: Optional[tuple[int, int, int, int]] = None,
 ) -> np.ndarray:
     """修复 Mask 内像素，返回 (修复后的图, 实际生效的掩膜)。
@@ -960,8 +986,9 @@ def _repair(
         work = np.maximum(work, extra)
         probe = _fill_once(rgb, work, radius, ring, flat_tolerance, False, "telea", surface_tolerance)
     repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft, quality, surface_tolerance)
-    if panel and bounds is not None:
-        restored, touched = _remove_panel(repaired, work, bounds, panel_strength, panel_max_alpha)
+    if (panel or panel_rect is not None) and bounds is not None:
+        restored, touched = _remove_panel(repaired, work, bounds, panel_strength,
+                                          panel_max_alpha, panel_rect)
         if restored is not None:
             repaired = restored
             work = np.maximum(work, (touched * 255).astype(np.uint8))
@@ -1111,7 +1138,7 @@ def clean_pdf(
                                options.contrast_delta * options.residue_ratio,
                                options.fill_quality, options.surface_tolerance,
                                options.remove_panel, options.panel_strength,
-                               options.panel_max_alpha, box)
+                               options.panel_max_alpha, options.panel_box, box)
             painted_mask = np.maximum(painted_mask, page_mask)
             image = _encode_png(repaired, options.png_compression)
             if not verified_roundtrip:
@@ -1150,8 +1177,14 @@ def clean_pdf(
     # 两道上限：自查最多把掩膜撑到 4 倍；衬底反解会合法地多涂一片，所以再给一个
     # 按整页面积算的天花板。两条都超才算失控——只超前者可能只是衬底生效了。
     painted_total = int((painted_mask > 0).sum())   # 数像素个数，不是把 255 加起来
+    # 天花板：自动模式按整页比例；用户框定衬底时按他画的框算——能动多少由那个框决定，
+    # 再多给两成余量容纳羽化边。这样闸门仍能拦住失控，又不会否掉用户的正当选择。
+    ceiling = options.panel_max_area * height * width
+    if options.panel_box is not None:
+        bx0, by0, bx1, by1 = options.panel_box
+        ceiling = max(ceiling, abs(bx1 - bx0) * abs(by1 - by0) * 1.2 + (mask > 0).sum())
     if (painted_total > 4 * max(1, int((mask > 0).sum()))
-            and painted_total > options.panel_max_area * height * width):
+            and painted_total > ceiling):
         return AutoCleanResult(
             success=False,
             message=(f"修复区异常膨胀到整页 {100.0 * painted_total / (height * width):.2f}%，"

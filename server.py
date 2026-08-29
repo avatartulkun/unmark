@@ -217,21 +217,31 @@ def _get_job(job_id: str) -> Job:
 
 
 def _png(image: Image.Image, box_ratio: Optional[list] = None, pad: float = 1.2) -> Response:
-    """按需把图裁到水印附近再输出，让「处理前/后」的差别一眼可见。"""
+    """按需把图裁到水印附近再输出，让「处理前/后」的差别一眼可见。
+
+    裁剪范围随响应头回传：前端要把用户在放大图上框的位置换算回页面坐标，
+    没有这个就只能猜，换算必错。
+    """
+    full_size = (image.width, image.height)
+    crop = (0, 0, image.width, image.height)
     if box_ratio:
         x0, y0, x1, y1 = box_ratio
         width, height = image.width, image.height
         cx, cy = (x0 + x1) / 2 * width, (y0 + y1) / 2 * height
         half_w = max(60.0, (x1 - x0) * width * pad)
         half_h = max(24.0, (y1 - y0) * height * pad * 3)
-        image = image.crop((
+        crop = (
             max(0, int(cx - half_w)), max(0, int(cy - half_h)),
             min(width, int(cx + half_w)), min(height, int(cy + half_h)),
-        ))
+        )
+        image = image.crop(crop)
     buffer = BytesIO()
     image.save(buffer, "PNG")
     return Response(buffer.getvalue(), media_type="image/png",
-                    headers={"Cache-Control": "no-store"})
+                    headers={"Cache-Control": "no-store",
+                             "X-Crop": ",".join(str(v) for v in crop),
+                             "X-Full": f"{full_size[0]},{full_size[1]}",
+                             "Access-Control-Expose-Headers": "X-Crop, X-Full"})
 
 
 def _render_index() -> str:
@@ -264,6 +274,39 @@ def _safe_stem(name: str) -> str:
     stem = "".join(ch for ch in stem if ch.isprintable() and ch not in '/\\:*?"<>|')
     stem = stem.strip(" .")[:80]
     return stem or "document"
+
+
+def _image_size(path: Path) -> Optional[tuple[int, int]]:
+    """取源 PDF 里满版位图的像素尺寸——算法的坐标系就是它。"""
+    with fitz.open(path) as document:
+        for page in document:
+            images = page.get_images(full=True)
+            if images:
+                return int(images[0][2]), int(images[0][3])
+    return None
+
+
+def _panel_box(value, size: Optional[tuple[int, int]]) -> Optional[tuple[int, int, int, int]]:
+    """把前端传来的比例框换算成位图像素坐标。
+
+    前端传比例而不是像素：预览图是按页面尺寸渲染的，和嵌入位图的像素尺寸并不相等，
+    让前端去做这个换算，多一个环节就多一处错。非法输入一律当没传。
+    """
+    if size is None or not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        ratios = [float(v) for v in value]
+    except (TypeError, ValueError):
+        return None
+    if any(r != r or r < -0.1 or r > 1.1 for r in ratios):     # 含 NaN 判断
+        return None
+    width, height = size
+    x0, x1 = sorted((ratios[0] * width, ratios[2] * width))
+    y0, y1 = sorted((ratios[1] * height, ratios[3] * height))
+    box = (max(0, int(x0)), max(0, int(y0)), min(width, int(x1)), min(height, int(y1)))
+    if box[2] - box[0] < 8 or box[3] - box[1] < 4:
+        return None
+    return box
 
 
 def _ratio_param(request: Request, key: str, default: float) -> float:
@@ -374,6 +417,37 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc))
         box_ratio = (job.result or {}).get("box_ratio") if zoom else None
         return _png(image, box_ratio)
+
+    @app.post("/api/jobs/{job_id}/reprocess")
+    async def reprocess(job_id: str, request: Request) -> JSONResponse:
+        """带着用户框定的衬底范围，把同一份源文件再跑一遍。
+
+        不要求重新上传：源文件还在任务目录里。用户看到残留 → 框出来 → 再跑，
+        这个来回要足够快才有人愿意用。
+        """
+        job = _get_job(job_id)
+        if job.status == "running":
+            raise HTTPException(status_code=409, detail="上一次处理还没结束")
+        if not job.source.exists():
+            raise HTTPException(status_code=410, detail="源文件已过期，请重新上传")
+
+        try:
+            payload = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="请求体不是合法 JSON")
+        panel = _panel_box(payload.get("panel_ratio"), _image_size(job.source))
+        if payload.get("panel_ratio") is not None and panel is None:
+            raise HTTPException(status_code=400, detail="框选范围无效，请重新框一次")
+        options = CleanOptions(
+            corner_w=_ratio_param(request, "corner_w", 0.30),
+            corner_h=_ratio_param(request, "corner_h", 0.12),
+            panel_box=panel,
+        )
+        job.status, job.stage, job.error = "running", "重新处理中…", ""
+        job.current, job.total, job.result = 0, 0, None
+        job.cancelled = False
+        threading.Thread(target=_run_job, args=(job, options), daemon=True).start()
+        return JSONResponse({"ok": True, "panel_box": panel})
 
     @app.get("/api/jobs/{job_id}/download")
     def download(job_id: str) -> FileResponse:

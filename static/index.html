@@ -35,6 +35,18 @@
   .primary:hover:not(:disabled){background:var(--accent-dark);border-color:var(--accent-dark)}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
+  /* 框选衬底 */
+  #panelbox{margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:11px;
+            background:#FBFBFD}
+  #panelbox h4{margin:0 0 4px;font-size:15px}
+  #panelbox p{margin:0 0 12px;color:var(--muted);font-size:13px;line-height:1.6}
+  #selwrap{position:relative;display:inline-block;max-width:100%;cursor:crosshair;
+           border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+  #selwrap img{display:block;max-width:100%}
+  #selrect{position:absolute;border:2px solid var(--accent);background:rgba(108,99,255,.16);
+           pointer-events:none;display:none}
+  #panelbox .row{margin-top:12px}
+
   /* 进度 */
   .bar{height:8px;background:#EEF0F4;border-radius:99px;overflow:hidden;margin:14px 0 8px}
   .bar>i{display:block;height:100%;width:0;background:var(--accent);border-radius:99px;
@@ -131,6 +143,22 @@
       </div>
     </div>
 
+    <div id="panelbox" class="hide">
+      <h4>还有一层淡淡的底色没去掉？</h4>
+      <p>
+        有些页面的角标背后压着一层半透明衬底。它的浓淡随每页背景变化，所以自动检测
+        看不见它——但只要你把范围框出来，就能解出来去掉。<br>
+        <b>在下图上拖一个框</b>，把那片发灰／发亮的区域圈进去，<b>宁可框大一点</b>。
+        框外的画面一个像素都不会动。
+      </p>
+      <div id="selwrap"><img id="selimg" alt="用于框选衬底的放大图"><div id="selrect"></div></div>
+      <div class="row">
+        <button class="primary" id="applypanel" disabled>按这个范围重新处理</button>
+        <button id="clearpanel">清除框选</button>
+        <span class="stage" id="panelhint">还没框选</span>
+      </div>
+    </div>
+
     <div class="meta" id="meta"></div>
 
     <div class="row" style="margin-top:20px">
@@ -221,6 +249,8 @@ function succeed(s){
   $("banner").textContent = "✅ " + r.message;
   $("compare").classList.remove("hide");
   $("download").classList.remove("hide");
+  // 框选衬底暂不开放：底层修正方向是错的（把比背景更暗的区域当成白色衬底去减，
+  // 越修越暗）。接口与前端都留着，等修正本身立得住再打开。
   pageCount = Math.max(1, r.pages_processed || 1);
   page = 1;
   $("pagetotal").textContent = `/ 共 ${pageCount} 页已处理`;
@@ -250,6 +280,7 @@ function render(){
   const b = `/api/jobs/${job}/preview?page=${page}`;
   $("zoom-before").src = `${b}&side=before&zoom=1`;
   $("zoom-after").src  = `${b}&side=after&zoom=1`;
+  loadSelector(`${b}&side=after&zoom=1`);
   $("full-before").src = `${b}&side=before`;
   $("full-after").src  = `${b}&side=after`;
   $("pageno").value = page;
@@ -264,6 +295,96 @@ $("pageno").onchange = e => {
   page = v; render();
 };
 $("cancel").onclick = () => fetch(`/api/jobs/${job}/cancel`, {method:"POST"});
+/* ---------- 框选衬底 ---------- */
+/* 服务端按「页面比例」接收框选范围：预览图是按页面尺寸渲染的，和嵌入位图的
+   像素尺寸并不相等，把换算放在服务端做，前端只管报比例。 */
+let crop = null, full = null, drag = null, ratio = null;
+
+async function loadSelector(url){
+  const res = await fetch(url);
+  if (!res.ok) return;
+  crop = (res.headers.get("X-Crop") || "").split(",").map(Number);
+  full = (res.headers.get("X-Full") || "").split(",").map(Number);
+  const blob = await res.blob();
+  if ($("selimg").dataset.url) URL.revokeObjectURL($("selimg").dataset.url);
+  const url2 = URL.createObjectURL(blob);
+  $("selimg").dataset.url = url2;
+  $("selimg").src = url2;
+  clearSelection();
+}
+
+function clearSelection(){
+  ratio = null;
+  $("selrect").style.display = "none";
+  $("applypanel").disabled = true;
+  $("panelhint").textContent = "还没框选";
+}
+
+function pointIn(e){
+  const r = $("selimg").getBoundingClientRect();
+  return {
+    x: Math.min(Math.max(e.clientX - r.left, 0), r.width),
+    y: Math.min(Math.max(e.clientY - r.top, 0), r.height),
+    w: r.width, h: r.height,
+  };
+}
+
+$("selwrap").addEventListener("pointerdown", e => {
+  if (!crop || crop.length !== 4) return;
+  e.preventDefault();
+  $("selwrap").setPointerCapture(e.pointerId);
+  drag = pointIn(e);
+  $("selrect").style.display = "block";
+});
+
+$("selwrap").addEventListener("pointermove", e => {
+  if (!drag) return;
+  const p = pointIn(e);
+  const x = Math.min(drag.x, p.x), y = Math.min(drag.y, p.y);
+  const w = Math.abs(p.x - drag.x), h = Math.abs(p.y - drag.y);
+  Object.assign($("selrect").style, {left:x+"px", top:y+"px", width:w+"px", height:h+"px"});
+});
+
+$("selwrap").addEventListener("pointerup", e => {
+  if (!drag) return;
+  const p = pointIn(e);
+  const start = drag; drag = null;
+  const x0 = Math.min(start.x, p.x), x1 = Math.max(start.x, p.x);
+  const y0 = Math.min(start.y, p.y), y1 = Math.max(start.y, p.y);
+  if (x1 - x0 < 6 || y1 - y0 < 4) return clearSelection();
+  // 显示坐标 → 裁剪图坐标 → 整页坐标 → 比例
+  const sx = (crop[2] - crop[0]) / start.w, sy = (crop[3] - crop[1]) / start.h;
+  ratio = [
+    (crop[0] + x0 * sx) / full[0], (crop[1] + y0 * sy) / full[1],
+    (crop[0] + x1 * sx) / full[0], (crop[1] + y1 * sy) / full[1],
+  ];
+  $("applypanel").disabled = false;
+  $("panelhint").textContent = "已框选，点左边的按钮重新处理";
+});
+
+$("clearpanel").onclick = clearSelection;
+
+$("applypanel").onclick = async () => {
+  if (!ratio) return;
+  $("applypanel").disabled = true;
+  $("panelhint").textContent = "提交中…";
+  const res = await fetch(`/api/jobs/${job}/reprocess`, {
+    method: "POST",
+    headers: {"content-type": "application/json"},
+    body: JSON.stringify({panel_ratio: ratio}),
+  });
+  if (!res.ok){
+    const err = await res.json().catch(() => ({}));
+    $("panelhint").textContent = "失败：" + (err.detail || res.status);
+    $("applypanel").disabled = false;
+    return;
+  }
+  $("bar").classList.add("indet");
+  $("stage").textContent = "按框选范围重新处理…";
+  show("step-run");
+  poll = setInterval(tick, 400);
+};
+
 $("download").onclick = () => location.href = `/api/jobs/${job}/download`;
 $("again").onclick = () => {
   if (job) fetch(`/api/jobs/${job}`, {method:"DELETE"});
