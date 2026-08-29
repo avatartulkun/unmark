@@ -703,3 +703,23 @@ def test_smooth_backdrop_refuses_busy_content() -> None:
     mask = box_to_mask((H, W), (140, 60, 240, 84), dilate=1)
 
     assert _smooth_backdrop(art, mask, ring=6, tolerance=3.0) is None
+
+
+def test_panel_removal_is_off_by_default() -> None:
+    """衬底反解默认关闭——实测它会凭空造出暗色矩形，见 CleanOptions 里的说明。"""
+    assert CleanOptions().remove_panel is False
+
+
+def test_area_guard_counts_pixels_not_values(tmp_path: Path) -> None:
+    """面积闸门要数像素个数，不能把掩膜里的 255 加起来。
+
+    掩膜是 0/255 的 uint8，`mask.sum()` 得到的是值的总和。拿它去和「整页像素数」
+    比，会算出「涂改了整页的 171%」这种荒谬结论，把正常任务误判成失控中止。
+    """
+    source = tmp_path / "deck.pdf"
+    _build_deck(source)
+
+    result = clean_pdf(source, tmp_path / "out.pdf")
+
+    assert result.success, result.message
+    assert 0 < result.area_percent < 100, f"面积算错了：{result.area_percent}"

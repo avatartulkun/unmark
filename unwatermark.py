@@ -101,6 +101,33 @@ class CleanOptions:
 
     定得太松，高频画面也会被硬拟合成一张平滑曲面，反而不如 inpaint。
     """
+    panel_strength: float = 8.0
+    """衬底反解的启动线：板内相对本页背景的亮度偏移超过它才动手。
+
+    NotebookLM 会按背景深浅决定衬底强弱——浅色页几乎没有，深色页会加一层明显的
+    亮色板。它**不是跨页固定的**，跨页交集看不见，只能逐页判断，所以判据比别处弱，
+    闸门也就设得更严：偏移够大、覆盖够广、alpha 图够平滑、反解后对比度确实回升，
+    四条全过才落地，任何一条不满足就整页放弃。
+    """
+    panel_max_alpha: float = 0.55
+    """反解允许的最大 alpha。太高说明底下的原画所剩无几，除以 (1-a) 会放大噪声。"""
+    panel_max_area: float = 0.02
+    """衬底反解之后，涂改总面积占整页的天花板。超过就判定失控并中止。"""
+    remove_panel: bool = False
+    """是否启用衬底反解。**默认关闭——实测这条路走不通。**
+
+    动机是真的：NotebookLM 会按背景深浅加一层自适应衬底，深色页上明显，
+    而它不是跨页固定的，跨页交集看不见，只能逐页判断。
+
+    但逐页判断依赖「从板外拟合背景、外推到板内」，而这个外推的误差和要测的
+    衬底效应是同一量级。实测在一处根本没有衬底的地方（板外背景 74.5，板内
+    74.8，本来就一致），它硬解出 alpha 并把那里压暗到 57.1——凭空造出一块
+    暗色矩形。加了边缘闸门和羽化窗也没救。
+
+    更要命的是「反解后对比度必须回升」那道闸门被骗过了：人为造出的硬边缘
+    反而让对比度指标变好看。又一次指标骗人、图不骗人。
+
+    留着开关和这段记录，是为了别再走一遍。"""
     graft_texture: bool = True
     """走 inpaint 那条路时，是否把邻近的高频纹理移植到修复区。
 
@@ -766,6 +793,140 @@ def _residue_ring(
     return ((ink >= threshold) & band).astype(np.uint8) * 255
 
 
+def _remove_panel(
+    rgb: np.ndarray,
+    mask: np.ndarray,
+    box: tuple[int, int, int, int],
+    strength: float,
+    max_alpha: float,
+) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    """去掉角标背后那层自适应衬底，返回 (修好的图, 动过的区域)。
+
+    NotebookLM 会按背景深浅决定衬底强弱：浅色页几乎没有，深色页会加一层明显的
+    亮色板保证文字可读。**它不是跨页固定的**，所以跨页求交集看不见它——只能逐页判断。
+
+    模型和角标本身一致：纯白或纯黑按 alpha 叠加。
+        观察值 = (1-a)·原画 + a·C
+    原画用板外一圈拟合的二次曲面外推，a 由此解出，再反解回原画。这是算的不是猜的。
+
+    逐页统计的依据比跨页交集弱得多，所以每一步都设了闸门，任何一条不满足就返回
+    (None, None) 整页放弃——宁可留着那层雾，也不能在画面上留一块变暗的方斑。
+    """
+    height, width = mask.shape
+    x0, y0, x1, y1 = box
+    box_height = max(y1 - y0, 1)
+    # 候选板：以角标框为中心适度外扩。范围给够才能盖住衬底，但不能大到失控。
+    py0 = max(0, y0 - int(box_height * 1.8))
+    py1 = min(height, y1 + int(box_height * 1.8))
+    px0 = max(0, x0 - int((x1 - x0) * 0.35))
+    px1 = min(width, x1 + int((x1 - x0) * 0.12))
+    if py1 - py0 < 8 or px1 - px0 < 24:
+        return None, None
+
+    panel = np.zeros((height, width), bool)
+    panel[py0:py1, px0:px1] = True
+    # 板外一圈用来拟合「本页真实背景」，必须离板足够远，免得把衬底本身当成背景
+    outer = np.zeros((height, width), bool)
+    outer[max(0, py0 - 26):min(height, py1 + 26), max(0, px0 - 90):min(width, px1 + 26)] = True
+    ring = outer & ~panel
+    if ring.sum() < 400:
+        return None, None
+
+    rows, columns = np.nonzero(ring)
+    target_rows, target_columns = np.nonzero(panel)
+    all_rows = np.concatenate([rows, target_rows])
+    all_columns = np.concatenate([columns, target_columns])
+    row_mid, row_span = all_rows.mean(), max(float(np.ptp(all_rows)) / 2.0, 1.0)
+    col_mid, col_span = all_columns.mean(), max(float(np.ptp(all_columns)) / 2.0, 1.0)
+
+    def design(r: np.ndarray, c: np.ndarray) -> np.ndarray:
+        u = (r - row_mid) / row_span
+        v = (c - col_mid) / col_span
+        return np.stack([np.ones_like(u), u, v, u * u, u * v, v * v], axis=1)
+
+    source = design(rows.astype(np.float64), columns.astype(np.float64))
+    target = design(target_rows.astype(np.float64), target_columns.astype(np.float64))
+    ring_values = rgb[ring].astype(np.float64)
+
+    background = np.zeros((len(target_rows), 3))
+    for channel in range(3):
+        values = ring_values[:, channel]
+        keep = np.ones(len(values), bool)
+        for _ in range(3):
+            coefficients, *_ = np.linalg.lstsq(source[keep], values[keep], rcond=None)
+            residual = np.abs(values - source @ coefficients)
+            cutoff = max(2.5 * np.median(residual[keep]), 2.0)
+            updated = residual <= cutoff
+            if updated.sum() < 300 or np.array_equal(updated, keep):
+                break
+            keep = updated
+        # 闸门一：本页背景本身就杂乱，拟合不出可信的参照，放弃
+        if float(np.median(np.abs(values - source @ coefficients)[keep])) > 6.0:
+            return None, None
+        background[:, channel] = target @ coefficients
+
+    observed = rgb[panel].astype(np.float64)
+    offset = observed.mean(axis=1) - background.mean(axis=1)
+    # 闸门二：衬底太弱、或者覆盖面太小，就别动——收益抵不上误判的风险
+    lifted = np.abs(offset) > strength
+    if lifted.mean() < 0.10:
+        return None, None
+
+    overlay = 255.0 if float(np.median(offset[lifted])) > 0 else 0.0
+    denominator = overlay - background.mean(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        alpha = np.where(np.abs(denominator) > 12.0, offset / denominator, 0.0)
+    alpha = np.clip(np.nan_to_num(alpha, nan=0.0, posinf=0.0, neginf=0.0), 0.0, max_alpha)
+
+    # alpha 图必须平滑——真实画面的亮度起伏不会像一块板那样规则
+    alpha_map = np.zeros((height, width), np.float32)
+    alpha_map[panel] = alpha
+    smoothed = cv2.GaussianBlur(alpha_map, (0, 0), 3.0)
+    roughness = float(np.abs(alpha_map[panel] - smoothed[panel]).mean())
+    # 闸门三：alpha 不平滑，说明抓到的是画面而不是衬底
+    if roughness > 0.05:
+        return None, None
+    # 闸门四：板边缘的 alpha 必须本就接近 0。不接近说明背景拟合被衬底本身污染了，
+    # 硬减下去会在板的边界留一道台阶——实测就是一块边缘锐利的暗色矩形。
+    edge = np.zeros((height, width), bool)
+    edge[py0:py0 + 3, px0:px1] = True
+    edge[py1 - 3:py1, px0:px1] = True
+    edge[py0:py1, px0:px0 + 3] = True
+    if float(np.abs(smoothed[edge]).mean()) > 0.02:
+        return None, None
+
+    # 再乘一个到边界归零的窗，杜绝任何残余台阶
+    window = np.zeros((height, width), np.float32)
+    window[py0:py1, px0:px1] = 1.0
+    feather = max(4, int(min(py1 - py0, px1 - px0) * 0.25))
+    window = cv2.GaussianBlur(window, (0, 0), feather / 2.0)
+    alpha = np.clip(smoothed[panel] * window[panel], 0.0, max_alpha)
+
+    restored = (observed - alpha[:, None] * overlay) / np.maximum(1.0 - alpha[:, None], 0.2)
+    restored = np.clip(restored, 0.0, 255.0)
+
+    result = rgb.copy()
+    result[panel] = restored.round().astype(np.uint8)
+    # 掩膜内的像素由填充负责，衬底这一步不许覆盖它
+    result[mask > 0] = rgb[mask > 0]
+
+    touched = panel & (mask == 0)
+    changed = np.zeros((height, width), bool)
+    changed[touched] = (np.abs(result[touched].astype(np.int16) - rgb[touched].astype(np.int16))
+                        .max(axis=1) > 0)
+    if not changed.any():
+        return None, None
+
+    # 闸门四：反解应当把对比度还回来。如果修完反而更平了，说明模型不成立。
+    def detail(image: np.ndarray) -> float:
+        gray = cv2.cvtColor(image[py0:py1, px0:px1], cv2.COLOR_RGB2GRAY).astype(np.float32)
+        return float((gray - cv2.GaussianBlur(gray, (0, 0), 2.0)).std())
+
+    if detail(result) < detail(rgb) * 0.98:
+        return None, None
+    return result, changed
+
+
 def _repair(
     rgb: np.ndarray,
     mask: np.ndarray,
@@ -778,6 +939,9 @@ def _repair(
     residue_threshold: float = 10.0,
     quality: str = "best",
     surface_tolerance: float = 3.0,
+    panel: bool = True,
+    panel_strength: float = 8.0,
+    panel_max_alpha: float = 0.55,
     bounds: Optional[tuple[int, int, int, int]] = None,
 ) -> np.ndarray:
     """修复 Mask 内像素，返回 (修复后的图, 实际生效的掩膜)。
@@ -796,6 +960,12 @@ def _repair(
         work = np.maximum(work, extra)
         probe = _fill_once(rgb, work, radius, ring, flat_tolerance, False, "telea", surface_tolerance)
     repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft, quality, surface_tolerance)
+    if panel and bounds is not None:
+        restored, touched = _remove_panel(repaired, work, bounds, panel_strength, panel_max_alpha)
+        if restored is not None:
+            repaired = restored
+            work = np.maximum(work, (touched * 255).astype(np.uint8))
+
     outside = work == 0
     repaired[outside] = rgb[outside]
     if not np.array_equal(repaired[outside], rgb[outside]):
@@ -939,7 +1109,9 @@ def clean_pdf(
                                options.graft_texture, options.residue_sweeps,
                                options.ink_kernel,
                                options.contrast_delta * options.residue_ratio,
-                               options.fill_quality, options.surface_tolerance, box)
+                               options.fill_quality, options.surface_tolerance,
+                               options.remove_panel, options.panel_strength,
+                               options.panel_max_alpha, box)
             painted_mask = np.maximum(painted_mask, page_mask)
             image = _encode_png(repaired, options.png_compression)
             if not verified_roundtrip:
@@ -975,10 +1147,15 @@ def clean_pdf(
 
     # 自查可能让每页多涂一点，复核必须拿这些页实际用过的掩膜的并集，
     # 否则要么误报越界，要么放过真正的越界。
-    if int(painted_mask.sum()) > 4 * max(1, int(mask.sum())):
+    # 两道上限：自查最多把掩膜撑到 4 倍；衬底反解会合法地多涂一片，所以再给一个
+    # 按整页面积算的天花板。两条都超才算失控——只超前者可能只是衬底生效了。
+    painted_total = int((painted_mask > 0).sum())   # 数像素个数，不是把 255 加起来
+    if (painted_total > 4 * max(1, int((mask > 0).sum()))
+            and painted_total > options.panel_max_area * height * width):
         return AutoCleanResult(
             success=False,
-            message="自查阶段掩膜异常膨胀，已中止（可能把画面误判为残留）",
+            message=(f"修复区异常膨胀到整页 {100.0 * painted_total / (height * width):.2f}%，"
+                     "已中止（可能把画面误判为水印或衬底）"),
             skipped=skipped,
         )
     problems = _verify(source, destination, painted_mask, processed, options.verify_sample)
