@@ -528,8 +528,14 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=409, detail="任务尚未成功完成")
         media = ("application/vnd.openxmlformats-officedocument.presentationml.presentation"
                  if job.kind == "pptx" else "application/pdf")
+        # no-transform 是给中间层看的：别动这个响应体。
+        # 实测走 Cloudflare 时，只要浏览器发了 Accept-Encoding: gzip/br，
+        # 同一个 18.8 MB 文件的下载会从 2 秒掉到 120～200 秒（8 MB/s → 90 KB/s），
+        # 而响应里根本没有 content-encoding——白挨一遍压缩，还把传输拖垮。
+        # PDF 和 PPTX 本来就是压缩过的容器，再压一遍毫无收益。
         return FileResponse(job.destination, media_type=media,
-                            filename=job.destination.name)
+                            filename=job.destination.name,
+                            headers={"Cache-Control": "no-transform"})
 
     @app.delete("/api/jobs/{job_id}")
     def drop(job_id: str) -> JSONResponse:
