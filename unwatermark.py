@@ -357,13 +357,11 @@ def detect_watermark(
         ("色度跨页交集", chroma_votes),
     ):
         core = (votes >= options.vote).astype(np.uint8)
-        shaped, reason = _shape_core(core, height, width, options)
+        shaped, reason = _shape_core(core, height, width, options, fine_votes, weak_votes)
         if shaped is None:
             reasons.append(f"{strategy}：{reason}")
             continue
-        core_full, box, core_pixels = shaped
-        core_full, core_pixels, refined_ok = _refine_to_ink(
-            core_full, core_pixels, fine_votes, weak_votes, options)
+        core_full, box, core_pixels, refined_ok = shaped
         # 精修成功时不再做形态学外扩：滞后阈值已经把抗锯齿边沿着字形收进来了，
         # 再方块外扩只会把字母之间重新粘成一片。
         grow = options.ink_dilate if refined_ok else options.dilate
@@ -414,8 +412,13 @@ def _refine_to_ink(
 
 
 def _shape_core(
-    core: np.ndarray, height: int, width: int, options: CleanOptions
-) -> tuple[Optional[tuple[np.ndarray, tuple[int, int, int, int], int]], str]:
+    core: np.ndarray,
+    height: int,
+    width: int,
+    options: CleanOptions,
+    fine_votes: Optional[np.ndarray] = None,
+    weak_votes: Optional[np.ndarray] = None,
+) -> tuple[Optional[tuple[np.ndarray, tuple[int, int, int, int], int, bool]], str]:
     """把投票结果收敛成一个像角标的连通块，并做几何与面积校验。
 
     core 是右下角搜索区域内的 0/1 图；返回的掩膜是整页尺寸。
@@ -440,8 +443,20 @@ def _shape_core(
     if merged.sum() == 0:
         return None, "区域内没有成行的候选块"
 
-    rows, columns = np.nonzero(merged)
+    # 先削成字形再校验面积：粗定位的团块把字母间隙也算了进去，虚胖一倍有余，
+    # 拿它去比 0.5% 的上限会把合法角标误判成正文——纯深底上尤其容易踩到。
     y_offset, x_offset = height - core.shape[0], width - core.shape[1]
+    refined_ok = False
+    if fine_votes is not None and weak_votes is not None:
+        full = np.zeros((height, width), np.uint8)
+        full[y_offset:, x_offset:] = merged
+        full, _, refined_ok = _refine_to_ink(full, int(merged.sum()), fine_votes, weak_votes, options)
+        if refined_ok:
+            merged = full[y_offset:, x_offset:]
+    if merged.sum() == 0:
+        return None, "精修后没有剩下像素"
+
+    rows, columns = np.nonzero(merged)
     box = (
         int(columns.min()) + x_offset,
         int(rows.min()) + y_offset,
@@ -464,7 +479,7 @@ def _shape_core(
 
     full = np.zeros((height, width), np.uint8)
     full[y_offset:, x_offset:] = merged
-    return (full, box, core_pixels), ""
+    return (full, box, core_pixels, refined_ok), ""
 
 
 def box_to_mask(

@@ -550,3 +550,34 @@ def test_residue_sweep_grows_mask_and_reports_it() -> None:
     # 返回的掩膜必须真的能通过「掩膜外逐位不变」这条复核
     outside = effective == 0
     assert np.array_equal(repaired[outside], marked[outside])
+
+
+def test_area_check_runs_after_the_mask_is_refined(tmp_path: Path) -> None:
+    """面积上限要拿削好的字形去比，不能拿粗定位的团块。
+
+    粗团块把字母间隙也算进去，虚胖一倍有余。纯深底配白字标时它会涨到 0.65%，
+    超过 0.5% 的上限，于是一个完全合法的角标被判成「很可能是正文」而拒绝处理。
+    削形之后同一个角标只有 0.35%。
+    """
+    import cv2
+    source = tmp_path / "dark.pdf"
+    W, H = 900, 620
+    document = fitz.open()
+    for index in range(8):
+        art = np.full((H, W, 3), 38, np.uint8)
+        for row in range(9):
+            y = 60 + row * 52
+            cv2.rectangle(art, (70, y), (70 + 180 + (index * 47 + row * 83) % 420, y + 14),
+                          (150, 154, 168), -1)
+        cv2.putText(art, "NotebookLM", (W - 240, H - 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+        ok, buffer = cv2.imencode(".png", cv2.cvtColor(art, cv2.COLOR_RGB2BGR))
+        page = document.new_page(width=W * 0.72, height=H * 0.72)
+        page.insert_image(page.rect, stream=buffer.tobytes())
+    document.save(source, deflate=True)
+    document.close()
+
+    result = clean_pdf(source, tmp_path / "out.pdf")
+
+    assert result.success, f"纯深底白字标被误拒：{result.message}"
+    assert result.area_percent < 0.5, "削形之后仍然虚胖"
