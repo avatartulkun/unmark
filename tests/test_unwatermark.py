@@ -609,3 +609,31 @@ def test_grain_amplitude_ignores_bright_neighbours() -> None:
     inside = mask > 0
     injected = grained[inside].astype(float).std()
     assert injected < 9, f"注入的噪声幅度 {injected:.1f} 过大，会变成黑白麻点"
+
+
+def test_residue_sweep_never_leaves_the_detection_box() -> None:
+    """自查不许越过检测框：框外一律是画面。
+
+    实测踩过——一条奶油色装饰线只伸进框边几个像素，被当成「没擦干净的墨迹」吃掉之后，
+    整条线看起来就断了。按颜色区分不可靠（那条线色度只有 29，比画面里别的东西还低），
+    按几何边界区分才干净。
+    """
+    import cv2
+    from unwatermark import _repair, box_to_mask
+
+    H, W = 120, 320
+    art = np.full((H, W, 3), 30, np.uint8)
+    cv2.line(art, (0, 62), (W, 62), (237, 229, 206), 2)      # 贯穿全图的装饰线
+    marked = art.copy()
+    cv2.putText(marked, "Gemini", (150, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+
+    box = (140, 52, 240, 78)
+    mask = box_to_mask((H, W), (150, 58, 230, 74), dilate=1)
+    _, effective = _repair(marked, mask, radius=4, sweeps=2, bounds=box)
+
+    ys, xs = np.nonzero(effective)
+    assert xs.min() >= box[0] and xs.max() < box[2], "自查横向越界了"
+    assert ys.min() >= box[1] and ys.max() < box[3], "自查纵向越界了"
+    # 框外的装饰线必须一根汗毛都没动
+    outside_line = art[62, :box[0]]
+    assert np.array_equal(marked[62, :box[0]], outside_line)

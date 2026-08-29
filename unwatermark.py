@@ -600,13 +600,25 @@ def _fill_once(
 
 
 def _residue_ring(
-    filled: np.ndarray, mask: np.ndarray, ink_kernel: int, threshold: float
+    filled: np.ndarray,
+    mask: np.ndarray,
+    ink_kernel: int,
+    threshold: float,
+    bounds: Optional[tuple[int, int, int, int]] = None,
 ) -> np.ndarray:
     """修完之后，紧贴掩膜的一圈里还有没有没擦干净的墨迹。
 
-    只看这一圈：再往外就是真实画面，本来就该有细节，动它就是啃图。
+    只看这一圈，而且不许越过检测框：角标按定义就在框内，框外的一律是画面。
+    实测踩过——一条奶油色的装饰线只伸进框边 5 个像素，被当成残留吃掉之后，
+    整条线看起来就断了。按颜色区分不可靠（那条线色度只有 29，比画面里别的东西还低），
+    按几何边界区分才是干净的判据。
     """
     band = (cv2.dilate(mask, np.ones((3, 3), np.uint8)) > 0) & (mask == 0)
+    if bounds is not None:
+        x0, y0, x1, y1 = bounds
+        inside_box = np.zeros_like(band)
+        inside_box[y0:y1, x0:x1] = True
+        band &= inside_box
     if not band.any():
         return np.zeros_like(mask)
     gray = cv2.cvtColor(filled, cv2.COLOR_RGB2GRAY)
@@ -624,6 +636,7 @@ def _repair(
     sweeps: int = 2,
     ink_kernel: int = 7,
     residue_threshold: float = 10.0,
+    bounds: Optional[tuple[int, int, int, int]] = None,
 ) -> np.ndarray:
     """修复 Mask 内像素，返回 (修复后的图, 实际生效的掩膜)。
 
@@ -633,7 +646,7 @@ def _repair(
     work = mask.copy()
     repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft)
     for _ in range(max(0, sweeps)):
-        extra = _residue_ring(repaired, work, ink_kernel, residue_threshold)
+        extra = _residue_ring(repaired, work, ink_kernel, residue_threshold, bounds)
         if not extra.any():
             break
         work = np.maximum(work, extra)
@@ -780,7 +793,7 @@ def clean_pdf(
                                options.backdrop_ring, options.backdrop_tolerance,
                                options.graft_texture, options.residue_sweeps,
                                options.ink_kernel,
-                               options.contrast_delta * options.residue_ratio)
+                               options.contrast_delta * options.residue_ratio, box)
             painted_mask = np.maximum(painted_mask, page_mask)
             image = _encode_png(repaired, options.png_compression)
             if not verified_roundtrip:
