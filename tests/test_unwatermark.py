@@ -637,3 +637,30 @@ def test_residue_sweep_never_leaves_the_detection_box() -> None:
     # 框外的装饰线必须一根汗毛都没动
     outside_line = art[62, :box[0]]
     assert np.array_equal(marked[62, :box[0]], outside_line)
+
+
+def test_flat_backdrop_survives_a_bright_neighbour() -> None:
+    """判断底色纯不纯要用中位数，别被取样圈里的亮线拉偏。
+
+    真实绘本里角标旁边常有装饰线、星光。用均值判断时，少数极端值会把「离散度」
+    抬高，一块本来平整的纯色底被误判成有纹理，白白掉进 inpaint——而纯色底
+    直接铺底色本可以做到像素级完美。
+    """
+    import cv2
+    from unwatermark import _flat_backdrop, _repair, box_to_mask
+
+    rng = np.random.default_rng(12)
+    H, W = 120, 320
+    flat = np.clip(np.full((H, W, 3), (13, 36, 67), np.float32)
+                   + rng.normal(0, 1.5, (H, W, 1)), 0, 255).astype(np.uint8)
+    cv2.line(flat, (0, 44), (W, 44), (237, 229, 206), 2)      # 紧贴掩膜上方的亮线
+    mask = box_to_mask((H, W), (120, 56, 250, 74), dilate=1)
+
+    backdrop = _flat_backdrop(flat, mask, ring=6, tolerance=4.0)
+    assert backdrop is not None, "有亮线在旁边就认不出纯色底了"
+    assert abs(int(backdrop[2]) - 67) <= 3, f"解出的底色偏了：{backdrop}"
+
+    # 真有大片异色时仍要拒绝，否则会把画面涂成一块死色
+    half = flat.copy()
+    half[:, :W // 2] = (200, 190, 120)
+    assert _flat_backdrop(half, mask, ring=6, tolerance=4.0) is None

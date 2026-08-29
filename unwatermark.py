@@ -80,7 +80,18 @@ class CleanOptions:
     形状就沿着字母轮廓走；换成形态学外扩则是方块外扩，几像素就把字母之间粘成一片。
     """
     radius: int = 4
-    """inpaint 修复半径。"""
+    """inpaint 修复半径（仅 TELEA 回退路径用）。"""
+    fill_quality: str = "telea"
+    """填充算法：best / fast / telea。
+
+    默认 TELEA。best/fast 走 OpenCV contrib 的 FSR（频率选择重建），需要额外装
+    opencv-contrib-python，没装会自动退回 TELEA。
+
+    FSR 在合成基准上大胜（「细线穿过角标」场景误差 68.93 → 8.96，平均 16.81 → 4.60），
+    但在两份真实绘本上**明显更差**：深蓝夜景页冒出成片绿色伪影，还凭空补出亮线
+    （金线像素 33 → 45，是在编造内容）。裁剪到角标周围再跑也没有改善。
+    所以默认不用它——合成基准和真实文件给出了相反的结论，以真实文件为准。
+    """
     backdrop_ring: int = 6
     """判定底色是否纯净时，往 Mask 外取样多少像素宽的一圈；0 表示禁用纯色铺底。"""
     backdrop_tolerance: float = 4.0
@@ -530,8 +541,15 @@ def _flat_backdrop(
         return None
     # 用中位数而不是均值：万一取样圈蹭到了正文的笔画，中位数不会被带偏
     center = np.median(samples, axis=0)
-    spread = np.abs(samples.astype(np.int16) - center).mean(axis=0)
+    # 用中位绝对偏差，不是均值：取样圈常蹭到装饰线、星光这类高对比元素，
+    # 均值会被少数极端值拉高，于是一块本来平整的纯色底被误判成「有纹理」，
+    # 白白掉进 inpaint——而纯色底直接铺底色本可以做到像素级完美。
+    deviation = np.abs(samples.astype(np.int16) - center)
+    spread = np.median(deviation, axis=0)
     if spread.max() > tolerance:
+        return None
+    # 但也不能只看中位数：真有大片区域不同色时得拒绝，否则会把画面涂成一块死色。
+    if float((deviation.max(axis=1) > tolerance * 4).mean()) > 0.25:
         return None
     return center.round().astype(np.uint8)
 
@@ -584,16 +602,60 @@ def _graft_texture(
     return out
 
 
+_FSR_ALGOS = {}
+if hasattr(cv2, "xphoto"):                       # opencv-contrib 才有
+    for _key, _attr in (("best", "INPAINT_FSR_BEST"), ("fast", "INPAINT_FSR_FAST")):
+        if hasattr(cv2.xphoto, _attr):
+            _FSR_ALGOS[_key] = getattr(cv2.xphoto, _attr)
+
+
+def _inpaint(rgb: np.ndarray, mask: np.ndarray, radius: int, quality: str) -> np.ndarray:
+    """补上掩膜内的像素。优先用 FSR，它会续接穿过掩膜的结构。
+
+    TELEA 是扩散法：从边界往里推平均值，一条穿过掩膜的细线会被直接抹断。
+    FSR 在频域外推，能把线接上。实测「细线穿过角标」场景误差 68.93 → 8.96。
+    """
+    algo = _FSR_ALGOS.get(quality)
+    if algo is not None:
+        rows, columns = np.nonzero(mask)
+        if len(rows):
+            # 只在角标周围一小块上跑。FSR 是频域外推，整页送进去会被页面别处的
+            # 高对比结构干扰——实测在深蓝夜景页上冒出成片绿色伪影，还凭空补出亮线。
+            margin = 48
+            y0 = max(0, int(rows.min()) - margin)
+            y1 = min(mask.shape[0], int(rows.max()) + 1 + margin)
+            x0 = max(0, int(columns.min()) - margin)
+            x1 = min(mask.shape[1], int(columns.max()) + 1 + margin)
+            patch, patch_mask = rgb[y0:y1, x0:x1], mask[y0:y1, x0:x1]
+            # xphoto 的掩膜语义相反：255 = 已知，0 = 待补
+            known = np.where(patch_mask > 0, 0, 255).astype(np.uint8)
+            destination = np.zeros_like(patch)
+            try:
+                cv2.xphoto.inpaint(cv2.cvtColor(patch, cv2.COLOR_RGB2BGR), known, destination, algo)
+                filled = rgb.copy()
+                filled[y0:y1, x0:x1] = cv2.cvtColor(destination, cv2.COLOR_BGR2RGB)
+                return filled
+            except cv2.error:
+                pass                              # 退回 TELEA，不因为一张图失败就整本作废
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    return cv2.cvtColor(cv2.inpaint(bgr, mask, radius, cv2.INPAINT_TELEA), cv2.COLOR_BGR2RGB)
+
+
 def _fill_once(
-    rgb: np.ndarray, mask: np.ndarray, radius: int, ring: int, flat_tolerance: float, graft: bool
+    rgb: np.ndarray,
+    mask: np.ndarray,
+    radius: int,
+    ring: int,
+    flat_tolerance: float,
+    graft: bool,
+    quality: str = "best",
 ) -> np.ndarray:
     backdrop = _flat_backdrop(rgb, mask, ring, flat_tolerance)
     if backdrop is not None:
         filled = rgb.copy()
         filled[mask > 0] = backdrop
         return filled
-    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    filled = cv2.cvtColor(cv2.inpaint(bgr, mask, radius, cv2.INPAINT_TELEA), cv2.COLOR_BGR2RGB)
+    filled = _inpaint(rgb, mask, radius, quality)
     if graft:
         filled = _graft_texture(filled, rgb, mask)
     return filled
@@ -636,6 +698,7 @@ def _repair(
     sweeps: int = 2,
     ink_kernel: int = 7,
     residue_threshold: float = 10.0,
+    quality: str = "best",
     bounds: Optional[tuple[int, int, int, int]] = None,
 ) -> np.ndarray:
     """修复 Mask 内像素，返回 (修复后的图, 实际生效的掩膜)。
@@ -644,13 +707,16 @@ def _repair(
     去复核，会把自己刚补涂的像素判成越界。
     """
     work = mask.copy()
-    repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft)
+    # 自查阶段只是「找哪里还没擦干净」，用最便宜的填充就够；高质量填充留到最后一次，
+    # 否则 FSR 会被重复跑三遍，每页多花两秒而结果完全一样。
+    probe = _fill_once(rgb, work, radius, ring, flat_tolerance, False, "telea")
     for _ in range(max(0, sweeps)):
-        extra = _residue_ring(repaired, work, ink_kernel, residue_threshold, bounds)
+        extra = _residue_ring(probe, work, ink_kernel, residue_threshold, bounds)
         if not extra.any():
             break
         work = np.maximum(work, extra)
-        repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft)
+        probe = _fill_once(rgb, work, radius, ring, flat_tolerance, False, "telea")
+    repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft, quality)
     outside = work == 0
     repaired[outside] = rgb[outside]
     if not np.array_equal(repaired[outside], rgb[outside]):
@@ -793,7 +859,8 @@ def clean_pdf(
                                options.backdrop_ring, options.backdrop_tolerance,
                                options.graft_texture, options.residue_sweeps,
                                options.ink_kernel,
-                               options.contrast_delta * options.residue_ratio, box)
+                               options.contrast_delta * options.residue_ratio,
+                               options.fill_quality, box)
             painted_mask = np.maximum(painted_mask, page_mask)
             image = _encode_png(repaired, options.png_compression)
             if not verified_roundtrip:
