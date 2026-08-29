@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>unmark · 去掉 PDF 右下角的固定角标水印</title>
-<meta name="description" content="去掉整页位图型 PDF 右下角的固定角标水印（NotebookLM 导出等）。在你自己电脑上跑，PDF 不上传，原件不改写。开源，MIT 协议。">
+<meta name="description" content="去掉 PDF 与 PPTX 右下角的固定角标水印（NotebookLM 导出等）。可在线用，也可在自己电脑上跑；原件不改写。开源，MIT 协议。">
 <meta property="og:title" content="unmark · 去掉 PDF 右下角的固定角标水印">
-<meta property="og:description" content="在你自己电脑上跑，PDF 不上传，原件不改写。开源，MIT 协议。">
+<meta property="og:description" content="在线用或本机跑，支持 PDF 与 PPTX，原件不改写。开源，MIT 协议。">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236C63FF'/%3E%3Crect x='8' y='7' width='16' height='18' rx='2' fill='white'/%3E%3Crect x='14' y='19' width='8' height='2.5' rx='1.25' fill='%236C63FF' opacity='.35'/%3E%3Cpath d='M11 20.2l3.4 3.4' stroke='%236C63FF' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
@@ -129,8 +129,10 @@
 
 <section>
   <div class="callout">
-    <p><strong>这不是一个在线服务。</strong>你下载它，装在自己电脑上，PDF 从头到尾没离开过你的硬盘 ——
-    程序只监听本机地址，压根没有上传这个动作。这一页只是说明书。</p>
+    <p><strong>两种用法，随你挑。</strong>想直接用，打开
+    <a href="https://unmark.tinylabpro.com/">unmark.tinylabpro.com</a> 把文件拖进去就行——
+    文件会上传到服务器处理，用完自动删除。想让文件完全不离开自己的硬盘，就下载下来装在
+    本机跑：程序只监听本机地址，压根没有上传这个动作。这一页是说明书。</p>
   </div>
 </section>
 
@@ -209,7 +211,7 @@
     <li><strong>原件永远不改写</strong>，结果写进一个新文件</li>
     <li>每页修复完，强制还原选区之外的像素并逐一断言；中间图用 PNG 无损编码，还做一次编解码往返核对</li>
     <li>写出之后重新打开，抽页逐像素复核 —— 确认选区之外真的一个像素都没变</li>
-    <li>服务只监听 <code>127.0.0.1</code>，你的 PDF 不出这台电脑</li>
+    <li>本机跑的时候服务只监听 <code>127.0.0.1</code>，文件不出这台电脑；在线版则用完即删</li>
   </ul>
 </section>
 

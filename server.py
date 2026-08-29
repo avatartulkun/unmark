@@ -21,6 +21,7 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
+from html import escape
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -277,23 +278,47 @@ def _render_index() -> str:
 
     本机版「不上传任何服务器」是真的；公开部署后就不是了，所以那句话必须换掉，
     而不是两边都挂着。占位符写成 HTML 注释，直接打开文件也不会看到残留标记。
+
+    页面是中英双语的，靠 data-zh / data-en 两个属性切换，所以这里填进去的
+    也得是同一种形状——只填一种语言，切到另一种就会露出中文。
     """
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     limit_mb = MAX_UPLOAD_BYTES // (1024 * 1024)
     ttl_min = int(JOB_TTL.total_seconds() // 60)
-    ttl = f"{ttl_min // 60} 小时" if ttl_min >= 60 else f"{ttl_min} 分钟"
+    ttl_zh = f"{ttl_min // 60} 小时" if ttl_min >= 60 else f"{ttl_min} 分钟"
+    ttl_en = (f"{ttl_min // 60} hour{'s' if ttl_min // 60 != 1 else ''}"
+              if ttl_min >= 60 else f"{ttl_min} minutes")
+    repo = "https://github.com/avatartulkun/unmark"
 
     if PUBLIC_MODE:
-        sub = (f"文件会上传到服务器处理，最大 {limit_mb} MB，"
-               f"原件与结果都在 {ttl}后自动删除。")
-        foot = ('想让文件完全不离开自己的电脑，可以'
-                '<a href="https://github.com/avatartulkun/unmark" '
-                'target="_blank" rel="noopener">下载到本地运行</a>。')
+        privacy_zh = (f"这是一个在线服务，文件会上传到服务器处理，单个最大 {limit_mb} MB。"
+                      f"处理只在内存和临时目录里进行，原件与结果都在 {ttl_zh}后自动删除，"
+                      "不做任何留存、不用于训练、也不会转给第三方。")
+        privacy_en = (f"This is a hosted service: your file is uploaded to the server, "
+                      f"up to {limit_mb} MB each. Processing happens in memory and a temporary "
+                      f"directory; both the original and the result are deleted automatically "
+                      f"after {ttl_en}. Nothing is retained, used for training, or passed on.")
+        foot_zh = "文件会上传到服务器处理，用完即删。"
+        foot_en = "Files are uploaded for processing and deleted afterwards."
     else:
-        sub = "文件只在本机处理，不上传任何服务器。"
-        foot = "全程离线。"
+        privacy_zh = ("现在跑的是本机版：服务只监听 127.0.0.1，文件不出这台电脑，"
+                      "全程不联网。")
+        privacy_en = ("You are running the local build: the service listens on 127.0.0.1 only, "
+                      "the file never leaves this computer, and nothing goes online.")
+        foot_zh = "本机运行，全程离线。"
+        foot_en = "Running locally — fully offline."
 
-    return html.replace("<!--SUB_NOTE-->", sub).replace("<!--FOOT_NOTE-->", foot)
+    def pair(zh: str, en: str) -> str:
+        return f'<span data-zh="{escape(zh, quote=True)}" data-en="{escape(en, quote=True)}"></span>'
+
+    foot = (pair(foot_zh, foot_en)
+            + f' <a href="{repo}" target="_blank" rel="noopener"'
+              f' data-zh="源码与本地部署" data-en="Source and local deployment">源码与本地部署</a>')
+    # 本机版没必要再劝人「跑在本机」——那一整块只在公开部署时才有意义
+    local_hint = "" if PUBLIC_MODE else '<style>#local-hint{display:none}</style>'
+    return (html.replace("<!--PRIVACY_NOTE-->", pair(privacy_zh, privacy_en))
+                .replace("<!--LOCAL_HINT_OPEN-->", local_hint)
+                .replace("<!--FOOT_NOTE-->", foot))
 
 
 def _safe_stem(name: str) -> str:

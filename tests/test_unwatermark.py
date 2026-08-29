@@ -322,20 +322,81 @@ def test_ratio_param_is_clamped(raw, expected) -> None:
 
 def test_index_privacy_copy_matches_deployment_mode(monkeypatch) -> None:
     """本机版说「不上传」，公开版必须说清文件确实传到服务器——不能两边都挂着。"""
+    import re
+
+    def privacy_note(html: str) -> str:
+        """只看服务端填进去的那一句——页面别处提到「跑在本机」是另一回事。"""
+        found = re.search(r'<p id="privacy-note">(.*?)</p>', html, re.S)
+        assert found, "隐私那一句没被填进去"
+        return found.group(1)
+
     monkeypatch.setattr(server_module, "PUBLIC_MODE", False)
     local = server_module._render_index()
-    assert "不上传任何服务器" in local and "全程离线" in local
-    assert "上传到服务器" not in local
+    assert "不出这台电脑" in privacy_note(local) and "不联网" in privacy_note(local)
+    assert "上传到服务器" not in privacy_note(local)
+    assert "#local-hint{display:none}" in local, "本机版不该再劝人「跑在本机」"
 
     monkeypatch.setattr(server_module, "PUBLIC_MODE", True)
     public = server_module._render_index()
-    assert "上传到服务器" in public
-    assert "不上传任何服务器" not in public and "全程离线" not in public
-    assert "自动删除" in public          # 说了传上去，就得说什么时候删
-    assert "下载到本地运行" in public     # 给在意隐私的人一条退路
+    assert "上传到服务器" in privacy_note(public)
+    assert "不出这台电脑" not in privacy_note(public)
+    assert "自动删除" in privacy_note(public)     # 说了传上去，就得说什么时候删
+    assert "#local-hint{display:none}" not in public   # 给在意隐私的人一条退路
+    assert "github.com/avatartulkun/unmark" in public
 
     for html in (local, public):
-        assert "<!--SUB_NOTE-->" not in html and "<!--FOOT_NOTE-->" not in html
+        assert "<!--PRIVACY_NOTE-->" not in html and "<!--FOOT_NOTE-->" not in html
+        assert "<!--LOCAL_HINT_OPEN-->" not in html
+
+
+def test_every_visible_string_has_both_languages() -> None:
+    """页面上每一处文案都必须中英成对，否则切到另一种语言会露出半截中文。
+
+    双语靠 data-zh / data-en（或 -html）两两成对来实现，缺一个就是缺一句译文；
+    服务端填进去的那几句也走同一套形状，所以这里连它一起查。
+    """
+    from html.parser import HTMLParser
+
+    class Pairs(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pairs = 0
+            self.lonely: list[tuple[str, str]] = []
+
+        def handle_starttag(self, tag, attrs) -> None:
+            got = dict(attrs)
+            for suffix in ("", "-html"):
+                has_zh = f"data-zh{suffix}" in got
+                has_en = f"data-en{suffix}" in got
+                if has_zh and has_en:
+                    self.pairs += 1
+                elif has_zh or has_en:
+                    self.lonely.append((tag, f"data-zh{suffix}" if has_zh else f"data-en{suffix}"))
+
+    for public in (False, True):
+        server_module.PUBLIC_MODE = public
+        parser = Pairs()
+        parser.feed(server_module._render_index())
+        assert not parser.lonely, f"缺译文：{parser.lonely[:4]}"
+        assert parser.pairs > 60, f"双语文案只有 {parser.pairs} 处，像是漏掉了大半页"
+
+
+def test_ui_strings_in_script_are_paired() -> None:
+    """JS 现造的字符串也得中英成对——它们不在 data-zh 里，容易漏。"""
+    import re
+
+    script = re.search(r"<script>(.*?)</script>",
+                       (Path(server_module.STATIC_DIR) / "index.html").read_text("utf-8"),
+                       re.S).group(1)
+    table = re.search(r"const T = \{(.*?)\n\};", script, re.S)
+    assert table, "没找到那张中英对照表"
+    body = table.group(1) + "\n"          # 补回被外层正则吃掉的换行，末条才匹配得上
+    entries = re.findall(r"^\s{2}(\w+):\s*\[", body, re.M)
+    assert len(entries) >= 25, f"对照表只有 {len(entries)} 条，像是漏了"
+    # 表里每一项都必须是「中文, 英文」两个元素；只写一个的会静默退化成中文
+    for name in entries:
+        item = re.search(name + r":\s*\[(.*?)\],\n", body, re.S)
+        assert item and "," in item.group(1), f"{name} 没有配对的英文"
 
 
 # ------------------------------------------------- 修复质量与颜色覆盖
