@@ -80,20 +80,24 @@
              text-align:center;font:inherit}
   .hide{display:none}
   .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:26px}
+  .markrow{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;
+    padding:9px 11px;border:1px solid var(--line);border-radius:8px;margin-bottom:7px;cursor:pointer}
+  .markrow:hover{background:rgba(127,127,127,.06)}
+  .marklabel{font-weight:600;word-break:break-all}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>NotebookLM 去水印</h1>
-  <p class="sub">跨页求交集自动定位固定角标（NotebookLM 等）并修复整本。<!--SUB_NOTE--></p>
+  <p class="sub">跨页求交集自动定位固定角标（NotebookLM 等）：PDF 修复整本，PPTX 直接删掉那个对象。<!--SUB_NOTE--></p>
 
   <!-- 1. 选文件 -->
   <div class="card" id="step-pick">
     <div id="drop">
-      <h2>把 PDF 拖到这里，或点击选择</h2>
-      <p>整页是一张图的 PDF 效果最好；有文字层的页会自动跳过</p>
+      <h2>把 PDF 或 PPTX 拖到这里，或点击选择</h2>
+      <p>PDF：整页是一张图的效果最好，有文字层的页会自动跳过<br>PPTX：直接删掉那个水印对象，无损，其余内容一个字不动</p>
     </div>
-    <input type="file" id="file" accept="application/pdf,.pdf" class="hide">
+    <input type="file" id="file" accept="application/pdf,.pdf,.pptx" class="hide">
   </div>
 
   <!-- 2. 处理中 -->
@@ -103,7 +107,7 @@
       <button id="cancel">取消</button>
     </div>
     <div class="bar indet" id="bar"><i></i></div>
-    <div class="stage" id="stage">正在读取 PDF…</div>
+    <div class="stage" id="stage">正在读取文件…</div>
   </div>
 
   <!-- 3. 结果 -->
@@ -159,15 +163,24 @@
       </div>
     </div>
 
+    <div id="marks" class="hide">
+      <p class="note" id="marksnote"></p>
+      <div id="marklist"></div>
+      <div class="row">
+        <button class="primary" id="applymarks" disabled>按勾选重新处理</button>
+        <span class="stage" id="markhint"></span>
+      </div>
+    </div>
+
     <div class="meta" id="meta"></div>
 
     <div class="row" style="margin-top:20px">
-      <button class="primary" id="download">下载去水印后的 PDF</button>
+      <button class="primary" id="download">下载去水印后的文件</button>
       <button id="again">换一个文件</button>
     </div>
   </div>
 
-  <p class="foot">只修改判定出的水印像素，其余像素逐位不变，写出后抽页复核。原始 PDF 不会被改写。<!--FOOT_NOTE--></p>
+  <p class="foot">PDF 只修改判定出的水印像素，其余像素逐位不变；PPTX 直接删掉水印对象，无损。两者写出后都会重新打开复核，原始文件不会被改写。<!--FOOT_NOTE--></p>
 </div>
 
 <script>
@@ -194,9 +207,9 @@ $("drop").addEventListener("drop", e => {
 });
 
 async function upload(file){
-  if (!file.name.toLowerCase().endsWith(".pdf")) { alert("请选择 PDF 文件。"); return; }
+  if (!/\.(pdf|pptx)$/i.test(file.name)) { alert("请选择 PDF 或 PPTX 文件。"); return; }
   $("run-name").textContent = file.name;
-  $("stage").textContent = "正在读取 PDF…";
+  $("stage").textContent = "正在读取文件…";
   $("bar").classList.add("indet");
   show("step-run");
   try{
@@ -247,8 +260,10 @@ function succeed(s){
   const r = s.result || {};
   $("banner").className = "banner ok";
   $("banner").textContent = "✅ " + r.message;
-  $("compare").classList.remove("hide");
   $("download").classList.remove("hide");
+  if (s.kind === "pptx") return succeedPptx(r);
+  $("compare").classList.remove("hide");
+  $("marks").classList.add("hide");
   // 框选衬底暂不开放：底层修正方向是错的（把比背景更暗的区域当成白色衬底去减，
   // 越修越暗）。接口与前端都留着，等修正本身立得住再打开。
   pageCount = Math.max(1, r.pages_processed || 1);
@@ -265,6 +280,62 @@ function succeed(s){
   render();
   show("step-done");
 }
+
+/* PPTX 没有「渲染一页」这回事，也不需要——删了哪个对象是能直接说清楚的，
+   比左右对比图更准。列出全部候选，删掉的打勾，没删的写明为什么。 */
+function succeedPptx(r){
+  $("compare").classList.add("hide");
+  $("marks").classList.remove("hide");
+  renderMarks(r);
+  $("meta").innerHTML = [
+    ["文件类型", "PPTX（无损删除对象）"],
+    ["幻灯片", `${r.slides} 页`],
+    ["删除处数", `${r.removed} 处`],
+  ].map(([k,v]) => `<div><b>${k}</b>${v}</div>`).join("");
+  show("step-done");
+}
+
+const WHERE = {slide: "逐页放置", layout: "版式", master: "母版"};
+
+function renderMarks(r){
+  const removed = new Set(r.removed_keys || []);
+  const marks = r.marks || [];
+  $("marksnote").innerHTML = marks.length
+    ? "下面是这份文件里<b>每页都在同一位置、内容也相同</b>的对象。打勾的已经删掉了；"
+      + "压在正文区里的默认不动——「每页都有」只说明它固定，不说明它是水印，页脚和栏目名也满足。"
+      + "要改就改勾选，再点重新处理。"
+    : "没有找到跨页固定的对象。";
+  $("marklist").innerHTML = marks.map(m => {
+    const on = removed.has(m.key) ? " checked" : "";
+    const why = m.reason ? `<span class="stage">（默认不动：${m.reason}）</span>` : "";
+    return `<label class="markrow"><input type="checkbox" data-key="${esc(m.key)}"${on}>`
+      + `<span class="marklabel">${esc(m.label)}</span>`
+      + `<span class="stage">${m.kind} · ${WHERE[m.home] || m.home} · `
+      + `${m.hits}/${m.total} 页 · 占页面 ${m.area_percent.toFixed(2)}%</span>${why}</label>`;
+  }).join("");
+  $("applymarks").disabled = true;
+  $("markhint").textContent = "";
+  $("marklist").querySelectorAll("input").forEach(el => {
+    el.onchange = () => { $("applymarks").disabled = false; $("markhint").textContent = "改过勾选，点左边重新处理"; };
+  });
+}
+
+function esc(t){ return String(t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+$("applymarks").onclick = async () => {
+  const keys = [...$("marklist").querySelectorAll("input")].filter(el => el.checked)
+                 .map(el => el.dataset.key);
+  $("applymarks").disabled = true;
+  $("markhint").textContent = "重新处理中…";
+  const res = await fetch(`/api/jobs/${job}/marks`, {
+    method: "POST", headers: {"content-type": "application/json"},
+    body: JSON.stringify({keys})
+  });
+  if (!res.ok){ $("markhint").textContent = "失败：" + ((await res.json()).detail || res.status); return; }
+  show("step-run");
+  $("stage").textContent = "重新清理…";
+  poll = setInterval(tick, 400);
+};
 
 function fail(msg, status){
   const warn = status === "failed" || status === "cancelled";

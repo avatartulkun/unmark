@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
@@ -31,6 +32,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from PIL import Image
 
+from unpptx import PptxOptions, clean_pptx
 from unwatermark import CleanOptions, clean_pdf
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -90,8 +92,9 @@ class Job:
     name: str
     source: Path
     destination: Path
+    kind: str = "pdf"                 # pdf / pptx
     status: str = "running"           # running / done / failed / cancelled
-    stage: str = "正在读取 PDF…"
+    stage: str = "正在读取文件…"
     current: int = 0
     total: int = 0
     result: Optional[dict] = None
@@ -107,6 +110,7 @@ class Job:
         return {
             "id": self.id,
             "name": self.name,
+            "kind": self.kind,
             "status": self.status,
             "stage": self.stage,
             "current": self.current,
@@ -179,7 +183,7 @@ def _evict_overflow() -> None:
         shutil.rmtree(job.directory, ignore_errors=True)
 
 
-def _run_job(job: Job, options: CleanOptions) -> None:
+def _run_job(job: Job, options, select: Optional[list[str]] = None) -> None:
     def progress(current: int, total: int, note: str) -> None:
         job.current, job.total, job.stage = current, total, note
 
@@ -193,9 +197,16 @@ def _run_job(job: Job, options: CleanOptions) -> None:
         job.status, job.stage = "cancelled", "已取消"
         return
     try:
-        result = clean_pdf(job.source, job.destination, options, progress, lambda: job.cancelled)
+        if job.kind == "pptx":
+            # PPTX 走的是完全不同的一条路：水印在那儿是个形状对象，直接删掉就行，
+            # 无损、不重编码、也没有取消点可插（整件事快到不需要）。
+            result = clean_pptx(job.source, job.destination, options,
+                                select=select, progress=progress)
+        else:
+            result = clean_pdf(job.source, job.destination, options, progress,
+                               lambda: job.cancelled)
         job.result = result.as_dict()
-        if result.cancelled:
+        if getattr(result, "cancelled", False):
             job.status, job.stage = "cancelled", "已取消"
         elif result.success:
             job.status, job.stage = "done", "完成"
@@ -262,7 +273,7 @@ def _render_index() -> str:
                 '<a href="https://github.com/avatartulkun/unmark" '
                 'target="_blank" rel="noopener">下载到本地运行</a>。')
     else:
-        sub = "PDF 只在本机处理，不上传任何服务器。"
+        sub = "文件只在本机处理，不上传任何服务器。"
         foot = "全程离线。"
 
     return html.replace("<!--SUB_NOTE-->", sub).replace("<!--FOOT_NOTE-->", foot)
@@ -369,26 +380,38 @@ def create_app() -> FastAPI:
         _sweep_expired()
         _check_rate_limit(_client_key(request))
         name = unquote(request.headers.get("x-filename", "") or "").strip() or "document.pdf"
-        if not name.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="只接受 PDF 文件")
+        lowered = name.lower()
+        if lowered.endswith(".pptx"):
+            kind, suffix = "pptx", ".pptx"
+        elif lowered.endswith(".pdf"):
+            kind, suffix = "pdf", ".pdf"
+        else:
+            raise HTTPException(status_code=400, detail="只接受 PDF 或 PPTX 文件")
         payload = await _read_capped_body(request)
         if not payload:
             raise HTTPException(status_code=400, detail="没有收到文件内容")
-        if not payload.startswith(b"%PDF"):
-            raise HTTPException(status_code=400, detail="这不是一个 PDF 文件")
+        # PPTX 是个 zip，头四个字节是 PK\x03\x04；.ppt（老的二进制格式）过不了这一关，
+        # 这是对的——那种文件得先另存为 pptx
+        magic = b"PK\x03\x04" if kind == "pptx" else b"%PDF"
+        if not payload.startswith(magic):
+            raise HTTPException(status_code=400,
+                                detail=f"这不是一个 {kind.upper()} 文件")
 
         job_id = uuid.uuid4().hex[:12]
         directory = WORK_ROOT / job_id
         directory.mkdir(parents=True, exist_ok=True)
         stem = _safe_stem(name)
-        source = directory / f"{stem}.pdf"
+        source = directory / f"{stem}{suffix}"
         source.write_bytes(payload)
-        job = Job(job_id, name, source, directory / f"{stem}_已去水印.pdf")
+        job = Job(job_id, name, source, directory / f"{stem}_已去水印{suffix}", kind=kind)
 
-        options = CleanOptions(
-            corner_w=_ratio_param(request, "corner_w", 0.30),
-            corner_h=_ratio_param(request, "corner_h", 0.12),
-        )
+        if kind == "pptx":
+            options = PptxOptions()
+        else:
+            options = CleanOptions(
+                corner_w=_ratio_param(request, "corner_w", 0.30),
+                corner_h=_ratio_param(request, "corner_h", 0.12),
+            )
         with JOBS_LOCK:
             JOBS[job_id] = job
         _evict_overflow()
@@ -408,6 +431,9 @@ def create_app() -> FastAPI:
     @app.get("/api/jobs/{job_id}/preview")
     def preview(job_id: str, page: int = 1, side: str = "after", zoom: int = 0) -> Response:
         job = _get_job(job_id)
+        if job.kind != "pdf":
+            # PPTX 没有「渲染一页」这回事；删了什么直接在结果里列出来，比图更准
+            raise HTTPException(status_code=409, detail="PPTX 没有页面预览，请看删除清单")
         path = job.source if side == "before" else job.destination
         if not path.exists():
             raise HTTPException(status_code=404, detail="该版本尚未生成")
@@ -417,6 +443,33 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc))
         box_ratio = (job.result or {}).get("box_ratio") if zoom else None
         return _png(image, box_ratio)
+
+    @app.post("/api/jobs/{job_id}/marks")
+    async def rerun_with_marks(job_id: str, request: Request) -> JSONResponse:
+        """按用户点名的对象重跑 PPTX。
+
+        自动模式只动落在正文区之外的小东西；压在正文里的重复块会被列出来但不碰，
+        要删得由人点名——删对象是不可见的操作，不该替用户做主。
+        """
+        job = _get_job(job_id)
+        if job.kind != "pptx":
+            raise HTTPException(status_code=400, detail="这个接口只用于 PPTX")
+        if job.status == "running":
+            raise HTTPException(status_code=409, detail="任务还在跑")
+        try:
+            body = json.loads(await _read_capped_body(request) or b"{}")
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="请求体不是合法 JSON")
+        keys = body.get("keys")
+        if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
+            raise HTTPException(status_code=400, detail="keys 必须是字符串数组")
+        if not job.source.exists():
+            raise HTTPException(status_code=410, detail="源文件已过期")
+
+        job.status, job.stage, job.error, job.result = "running", "重新清理…", "", None
+        threading.Thread(target=_run_job, args=(job, PptxOptions(), keys or None),
+                         daemon=True).start()
+        return JSONResponse({"id": job.id})
 
     @app.post("/api/jobs/{job_id}/reprocess")
     async def reprocess(job_id: str, request: Request) -> JSONResponse:
@@ -454,7 +507,9 @@ def create_app() -> FastAPI:
         job = _get_job(job_id)
         if job.status != "done" or not job.destination.exists():
             raise HTTPException(status_code=409, detail="任务尚未成功完成")
-        return FileResponse(job.destination, media_type="application/pdf",
+        media = ("application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                 if job.kind == "pptx" else "application/pdf")
+        return FileResponse(job.destination, media_type=media,
                             filename=job.destination.name)
 
     @app.delete("/api/jobs/{job_id}")

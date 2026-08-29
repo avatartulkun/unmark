@@ -1,11 +1,15 @@
 # NotebookLM 去水印
 
-去掉整页位图型 PDF 右下角的固定角标水印（NotebookLM 导出等）。浏览器界面，全程离线。
+去掉 PDF 和 PPTX 右下角的固定角标水印（NotebookLM 导出等）。浏览器界面，全程离线。
+
+判据只有一条，两种格式共用：**内容在变、它不变**。但做法完全不同——
+PDF 里水印是像素，只能小心地涂掉再补；PPTX 里它是个形状对象，直接删掉就行。
 
 ## 用法
 
 双击 **启动去水印网页.command**，浏览器会自动打开 `http://127.0.0.1:8823/`。
-把 PDF 拖进页面 → 等进度跑完 → 看「处理前 / 处理后」的放大对比 → 下载。
+把 PDF 或 PPTX 拖进页面 → 等进度跑完 → PDF 看「处理前 / 处理后」的放大对比、
+PPTX 看删除清单 → 下载。
 
 首次使用需要装依赖：
 
@@ -19,7 +23,7 @@ python3 -m pip install -r requirements.txt
 python3 server.py --port 8823
 ```
 
-## 它是怎么找水印的
+## PDF：它是怎么找水印的
 
 水印的定义就是「内容在变、它不变」的那部分像素。所以不靠内置模板图，而是把若干页的
 右下角叠起来求交集——在几乎每一页的同一坐标都成立的，才算水印。换字体、换版本、
@@ -42,6 +46,39 @@ python3 server.py --port 8823
 宁可不处理也不乱涂。
 
 角标本身之外，深色页上还会有一层垫在它底下的「磨砂衬底」，那是另一套判据，见下文。
+
+## PPTX：不涂，直接删
+
+PPTX 里的水印不是像素，是一个形状对象。所以这条路上没有涂、没有填、没有重编码：
+
+- **无损**。其余每一个字、每一张图，二进制原样保留
+- **文件只会变小**，不像 PDF 那条路要把位图无损重编码，输出常常涨到几倍
+- 没有「修复得像不像」这种问题，也就没有磨砂衬底那一堆麻烦
+
+跨页取交集的方式是给每个形状算一个指纹：文字按内容、图片按像素、其余按自己的 XML。
+XML 那一路必须先抹掉逐页递增的 `id` 和自动生成的 `name`，否则同一个角标在每页的指纹
+都不一样，交集永远为空——这条路会静默地什么都找不到。
+
+**母版和版式上的水印也算数。** 版式上的一个形状会显示在所有用它的页面上，所以按
+「它实际覆盖到多少页」计票，和逐页放置的角标同一个标准；删则删在源头，一次解决。
+
+自动模式只动同时满足三条的对象：跨页覆盖 ≥85%、占页面 ≤8%、**完全落在正文区之外**。
+最后一条是关键——「每页都有」只说明它固定，不说明它是水印，页脚、栏目名、装饰块都满足。
+水印待在页边，正文待在中间。压在中间的照样列出来并写明为什么不动，要删由人点名：
+删对象是不可见的操作，不该替用户做主。
+
+写出后重新打开逐页核对：该留的一个没少、该删的一个没剩，页数不变。不过复核就删掉
+输出文件。删除很容易做过头，而且不像涂像素那样一眼看得出来。
+
+也能当命令行用：
+
+```bash
+python3 unpptx.py 输入.pptx --list        # 只列候选，不改动
+python3 unpptx.py 输入.pptx 输出.pptx      # 自动清理
+python3 unpptx.py 输入.pptx 输出.pptx --select 'text:a7c4...:9509760:6126480'
+```
+
+**不支持老的 `.ppt`**（二进制格式），得先在 PowerPoint 里另存为 `.pptx`。
 
 ## 怎么补上被涂掉的那块
 
@@ -99,11 +136,13 @@ python3 server.py --port 8823
 
 ## 安全保证
 
-- **原始 PDF 永不改写**，结果写到一个新文件
+- **原始文件永不改写**，结果写到一个新文件
 - 每页修复后强制还原 Mask 外像素并断言；中间图用 PNG 无损编码，并做一次编解码往返核对
 - 写出后重新打开，抽页逐像素复核 Mask 之外确实没变
-- 有文字层的页会跳过——那种水印多半是可直接删除的文本对象，不该用涂像素的办法处理
-- 服务只监听 `127.0.0.1`，PDF 不出这台电脑
+- PPTX 只删被判定的那几个对象，其余内容二进制原样保留；写出后重新打开核对
+  「该留的一个没少、该删的一个没剩」，不过复核就删掉输出文件
+- 有文字层的 PDF 页会跳过——那种水印多半是可直接删除的文本对象，不该用涂像素的办法处理
+- 服务只监听 `127.0.0.1`，文件不出这台电脑
 
 ## 部署成公开服务
 
@@ -148,7 +187,7 @@ curl -fsSL https://raw.githubusercontent.com/avatartulkun/unmark/main/deploy/set
 
 | 变量 | 默认 | 作用 |
 |---|---|---|
-| `UNMARK_MAX_UPLOAD_MB` | `60` | 单个文件大小上限 |
+| `UNMARK_MAX_UPLOAD_MB` | `60` | 单个文件大小上限（PDF / PPTX 共用） |
 | `UNMARK_MAX_CONCURRENT` | `2` | 同时真正在跑的任务数，直接决定内存峰值 |
 | `UNMARK_MAX_LIVE_JOBS` | `24` | 内存中保留的任务数，超出从最旧的已结束任务开始丢 |
 | `UNMARK_RATE_LIMIT` | `12` | 每个来源在窗口内可发起的任务数 |
@@ -164,7 +203,8 @@ curl -fsSL https://raw.githubusercontent.com/avatartulkun/unmark/main/deploy/set
 
 | 文件 | 作用 |
 |---|---|
-| `unwatermark.py` | 检测与修复算法，可单独 import 使用 |
+| `unwatermark.py` | PDF 的检测与修复算法，可单独 import 使用 |
+| `unpptx.py` | PPTX 的检测与删除，可单独 import，也能当命令行用 |
 | `server.py` | 网页后端（FastAPI） |
 | `static/index.html` | 页面 |
 | `site/index.html` | 介绍页（unmark.tinylabpro.com） |
@@ -178,6 +218,10 @@ curl -fsSL https://raw.githubusercontent.com/avatartulkun/unmark/main/deploy/set
 from unwatermark import clean_pdf
 result = clean_pdf("输入.pdf", "输出.pdf")
 print(result.success, result.message)
+
+from unpptx import clean_pptx, scan_pptx
+marks, slides, why = scan_pptx("输入.pptx")     # 先看看有哪些候选
+result = clean_pptx("输入.pptx", "输出.pptx")   # 自动模式
 ```
 
 ## 测试

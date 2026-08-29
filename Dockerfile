@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY unwatermark.py server.py ./
+COPY unwatermark.py unpptx.py server.py ./
 COPY static ./static
 
 # 非 root 运行；临时目录要可写（任务文件都落在 TMPDIR 下）。
