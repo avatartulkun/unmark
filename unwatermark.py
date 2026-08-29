@@ -96,6 +96,11 @@ class CleanOptions:
     """判定底色是否纯净时，往 Mask 外取样多少像素宽的一圈；0 表示禁用纯色铺底。"""
     backdrop_tolerance: float = 4.0
     """取样圈内像素偏离中位数的平均值上限；不超过就认为是纯色底，直接铺底色。"""
+    surface_tolerance: float = 3.0
+    """渐变曲面拟合的验收线：拟合后的中位残差超过它就判定「这不是渐变」，退回 inpaint。
+
+    定得太松，高频画面也会被硬拟合成一张平滑曲面，反而不如 inpaint。
+    """
     graft_texture: bool = True
     """走 inpaint 那条路时，是否把邻近的高频纹理移植到修复区。
 
@@ -554,6 +559,70 @@ def _flat_backdrop(
     return center.round().astype(np.uint8)
 
 
+def _smooth_backdrop(
+    rgb: np.ndarray, mask: np.ndarray, ring: int, tolerance: float
+) -> Optional[np.ndarray]:
+    """底色是平滑渐变时，用二次曲面从周围外推出掩膜内的底色。
+
+    介于「纯色铺底」（零次，常数）和 inpaint 之间。渐变是可建模的，拟合出来的值
+    是算的不是猜的；inpaint 则是从边界扩散平均值，在渐变上会拉出一块死板的过渡。
+
+    拟合必须抗干扰：取样圈里常有装饰线、星光这类高对比元素，直接最小二乘会被
+    带偏。这里迭代剔除离群点，再用中位残差判断拟合是否可信——判不可信就返回
+    None，交给 inpaint，不硬来。
+    """
+    if ring <= 0:
+        return None
+    kernel = np.ones((ring * 4 + 1,) * 2, np.uint8)      # 比纯色判定取宽一点，才拟合得稳
+    band = (cv2.dilate(mask, kernel) > 0) & (mask == 0)
+    rows, columns = np.nonzero(band)
+    if len(rows) < 80:
+        return None
+
+    target_rows, target_columns = np.nonzero(mask)
+    if len(target_rows) == 0:
+        return None
+
+    # 坐标归一化到 [-1, 1]，避免二次项把矩阵条件数搞坏
+    all_rows = np.concatenate([rows, target_rows])
+    all_columns = np.concatenate([columns, target_columns])
+    row_mid, row_span = all_rows.mean(), max(float(np.ptp(all_rows)) / 2.0, 1.0)
+    col_mid, col_span = all_columns.mean(), max(float(np.ptp(all_columns)) / 2.0, 1.0)
+
+    def design(r: np.ndarray, c: np.ndarray) -> np.ndarray:
+        u = (r - row_mid) / row_span
+        v = (c - col_mid) / col_span
+        return np.stack([np.ones_like(u), u, v, u * u, u * v, v * v], axis=1)
+
+    source = design(rows.astype(np.float64), columns.astype(np.float64))
+    target = design(target_rows.astype(np.float64), target_columns.astype(np.float64))
+    samples = rgb[band].astype(np.float64)
+
+    predicted = np.zeros((len(target_rows), 3))
+    for channel in range(3):
+        values = samples[:, channel]
+        weights = np.ones(len(values), bool)
+        for _ in range(3):                            # 迭代剔除离群点
+            coefficients, *_ = np.linalg.lstsq(source[weights], values[weights], rcond=None)
+            residual = np.abs(values - source @ coefficients)
+            cutoff = max(2.5 * np.median(residual[weights]), 2.0)
+            updated = residual <= cutoff
+            if updated.sum() < 60 or np.array_equal(updated, weights):
+                break
+            weights = updated
+        # 中位残差就是「这块底色有多平滑」；不够平滑说明不是渐变，别硬拟合
+        if float(np.median(np.abs(values - source @ coefficients)[weights])) > tolerance:
+            return None
+        predicted[:, channel] = target @ coefficients
+
+    # 外推不许跑出取样圈见过的范围——二次曲面在边界外很容易失控
+    low = samples.min(axis=0) - 6.0
+    high = samples.max(axis=0) + 6.0
+    if (predicted < low - 12).any() or (predicted > high + 12).any():
+        return None
+    return np.clip(predicted, low, high).round().astype(np.uint8)
+
+
 def _graft_texture(
     repaired: np.ndarray, rgb: np.ndarray, mask: np.ndarray, sigma: float = 1.6
 ) -> np.ndarray:
@@ -649,11 +718,20 @@ def _fill_once(
     flat_tolerance: float,
     graft: bool,
     quality: str = "best",
+    surface_tolerance: float = 3.0,
 ) -> np.ndarray:
     backdrop = _flat_backdrop(rgb, mask, ring, flat_tolerance)
     if backdrop is not None:
         filled = rgb.copy()
         filled[mask > 0] = backdrop
+        return filled
+    # 纯色不成立，再试渐变曲面；都不行才交给 inpaint 去猜
+    surface = _smooth_backdrop(rgb, mask, ring, surface_tolerance)
+    if surface is not None:
+        filled = rgb.copy()
+        filled[mask > 0] = surface
+        if graft:
+            filled = _graft_texture(filled, rgb, mask)
         return filled
     filled = _inpaint(rgb, mask, radius, quality)
     if graft:
@@ -699,6 +777,7 @@ def _repair(
     ink_kernel: int = 7,
     residue_threshold: float = 10.0,
     quality: str = "best",
+    surface_tolerance: float = 3.0,
     bounds: Optional[tuple[int, int, int, int]] = None,
 ) -> np.ndarray:
     """修复 Mask 内像素，返回 (修复后的图, 实际生效的掩膜)。
@@ -709,14 +788,14 @@ def _repair(
     work = mask.copy()
     # 自查阶段只是「找哪里还没擦干净」，用最便宜的填充就够；高质量填充留到最后一次，
     # 否则 FSR 会被重复跑三遍，每页多花两秒而结果完全一样。
-    probe = _fill_once(rgb, work, radius, ring, flat_tolerance, False, "telea")
+    probe = _fill_once(rgb, work, radius, ring, flat_tolerance, False, "telea", surface_tolerance)
     for _ in range(max(0, sweeps)):
         extra = _residue_ring(probe, work, ink_kernel, residue_threshold, bounds)
         if not extra.any():
             break
         work = np.maximum(work, extra)
-        probe = _fill_once(rgb, work, radius, ring, flat_tolerance, False, "telea")
-    repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft, quality)
+        probe = _fill_once(rgb, work, radius, ring, flat_tolerance, False, "telea", surface_tolerance)
+    repaired = _fill_once(rgb, work, radius, ring, flat_tolerance, graft, quality, surface_tolerance)
     outside = work == 0
     repaired[outside] = rgb[outside]
     if not np.array_equal(repaired[outside], rgb[outside]):
@@ -860,7 +939,7 @@ def clean_pdf(
                                options.graft_texture, options.residue_sweeps,
                                options.ink_kernel,
                                options.contrast_delta * options.residue_ratio,
-                               options.fill_quality, box)
+                               options.fill_quality, options.surface_tolerance, box)
             painted_mask = np.maximum(painted_mask, page_mask)
             image = _encode_png(repaired, options.png_compression)
             if not verified_roundtrip:
