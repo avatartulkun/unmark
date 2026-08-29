@@ -40,7 +40,11 @@ services:
   tunnel:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel --no-autoupdate run
+    # --protocol http2：默认的 QUIC 在这条链路上不稳。实测同一个 18.8 MB 文件，
+    # 每四五次下载就有一次从 2 秒掉到 90 秒以上（8 MB/s → 126 KB/s），其余次数正常；
+    # 而容器内直连原点稳定在 245 MB/s，所以问题不在应用也不在磁盘。
+    # cloudflared 默认建 4 条连接轮流用，只要其中一条路径差，就正好是这个命中率。
+    command: tunnel --no-autoupdate --protocol http2 run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:?请在 .env 里设置 TUNNEL_TOKEN}
     depends_on:

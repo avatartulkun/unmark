@@ -200,6 +200,12 @@ curl -fsSL https://raw.githubusercontent.com/avatartulkun/unmark/main/deploy/set
 3. 隧道的 Public hostname 指向 `http://app:8823`
 4. `docker compose up -d`
 
+`docker-compose.yml` 里给 cloudflared 显式指定了 `--protocol http2`。默认的 QUIC
+在实测的链路上不稳：同一个 18.8 MB 文件，每四五次下载就有一次从 2 秒掉到 90 秒以上
+（8 MB/s → 126 KB/s），其余次数正常。容器内直连原点稳定在 245 MB/s，所以问题既不在
+应用也不在磁盘；cloudflared 默认建 4 条连接轮流用，只要其中一条路径差，命中率正好是
+这个数。换成 http2 后 22 次连续下载没有一次超过 7 秒。
+
 `docker-compose.yml` 里应用容器**不对外映射端口**，只有隧道容器连得到它，
 宿主机和局域网都碰不到。
 
