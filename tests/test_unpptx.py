@@ -248,3 +248,130 @@ def test_outer_only_can_be_turned_off(tmp_path: Path) -> None:
     source = _deck(tmp_path / "in.pptx", badge="", centered_repeat=True)
     marks, _total, _why = scan_pptx(source, PptxOptions(outer_only=False))
     assert any(m.label == "公司内部资料" and m.eligible for m in marks)
+
+
+# ---------------------------------------------------------------- 整页位图型
+
+def _bitmap_deck_file(path: Path, slides: int = 6, badge: bool = True,
+                      ragged: bool = False) -> Path:
+    """造一份「每页就是一整张图」的 PPTX——真实导出件里更常见的那一种。
+
+    画面逐页在变、角标每页都在同一坐标，判据和 PDF 那条路完全一样。
+    """
+    import cv2
+    import numpy as np
+
+    presentation = Presentation()
+    presentation.slide_width, presentation.slide_height = Inches(12.8), Inches(7.2)
+    blank = presentation.slide_layouts[6]
+    for index in range(slides):
+        width = 1280 - (40 if ragged and index == 1 else 0)
+        art = np.full((720, width, 3), 236, np.uint8)
+        cv2.rectangle(art, (60, 60 + index * 11), (420 + index * 30, 300), (60, 90, 170), -1)
+        cv2.circle(art, (900, 200 + index * 13), 90, (210, 140, 60), -1)
+        if badge:
+            cv2.putText(art, "NotebookLM", (width - 250, 690),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.72, (25, 25, 25), 2, cv2.LINE_AA)
+        ok, buffer = cv2.imencode(".png", art)
+        assert ok
+        slide = presentation.slides.add_slide(blank)
+        slide.shapes.add_picture(io.BytesIO(buffer.tobytes()), 0, 0,
+                                 presentation.slide_width, presentation.slide_height)
+    presentation.save(str(path))
+    return path
+
+
+def _media(path: Path) -> dict[str, bytes]:
+    import zipfile
+
+    with zipfile.ZipFile(path) as archive:
+        return {i.filename: archive.read(i.filename) for i in archive.infolist()}
+
+
+def test_bitmap_deck_is_recognised(tmp_path: Path) -> None:
+    """每页正好一张满版图的 PPTX 要被认出来，并给出各页图片在 zip 里的位置。"""
+    from unpptx import bitmap_parts
+
+    source = _bitmap_deck_file(tmp_path / "in.pptx")
+    parts = bitmap_parts(source)
+    assert len(parts) == 6
+    assert all(p.startswith("ppt/media/") for p in parts)
+
+
+def test_object_deck_is_not_mistaken_for_a_bitmap_deck(tmp_path: Path) -> None:
+    """有文本框的普通 PPTX 不该被当成整页位图型。"""
+    from unpptx import bitmap_parts
+
+    assert bitmap_parts(_deck(tmp_path / "in.pptx")) == []
+
+
+def test_bitmap_badge_is_painted_out(tmp_path: Path) -> None:
+    """烧在像素里的角标要按 PDF 那一套涂掉，掩膜之外一个像素都不许变。"""
+    import cv2
+    import numpy as np
+    from unpptx import bitmap_parts, clean_pptx_bitmaps
+
+    source = _bitmap_deck_file(tmp_path / "in.pptx")
+    destination = tmp_path / "out.pptx"
+    result = clean_pptx_bitmaps(source, destination)
+    assert result.success, result.message
+    assert result.mode == "bitmaps" and result.pages_processed == 6
+
+    name = bitmap_parts(source)[0]
+    before = cv2.imdecode(np.frombuffer(_media(source)[name], np.uint8), cv2.IMREAD_COLOR)
+    after = cv2.imdecode(np.frombuffer(_media(destination)[name], np.uint8), cv2.IMREAD_COLOR)
+    assert after.shape == before.shape
+    x0, y0, x1, y1 = result.box
+    assert float(np.abs(before[y0:y1, x0:x1].astype(int)
+                        - after[y0:y1, x0:x1].astype(int)).mean()) > 3, "角标那块根本没动"
+
+    # 涂改必须局限在检测框附近：全图差异像素数不该远超框的面积
+    changed = int((before != after).any(axis=2).sum())
+    assert changed <= (x1 - x0 + 8) * (y1 - y0 + 8), f"改到框外去了（{changed} 个像素）"
+
+
+def test_untouched_parts_stay_byte_identical(tmp_path: Path) -> None:
+    """除了那几张图，zip 里其余每个部件都要逐字节不变。
+
+    走的是「重打一遍 zip、只替换图片条目」，不经过 python-pptx 重新序列化——
+    重新序列化会顺手改写一堆无关 XML，diff 里根本看不出到底动了什么。
+    """
+    from unpptx import bitmap_parts, clean_pptx_bitmaps
+
+    source = _bitmap_deck_file(tmp_path / "in.pptx")
+    destination = tmp_path / "out.pptx"
+    assert clean_pptx_bitmaps(source, destination).success
+
+    before, after = _media(source), _media(destination)
+    assert before.keys() == after.keys(), "部件清单变了"
+    images = set(bitmap_parts(source))
+    for name in before:
+        if name not in images:
+            assert before[name] == after[name], f"{name} 不该被改动"
+
+
+def test_clean_pptx_falls_back_to_the_bitmap_path(tmp_path: Path) -> None:
+    """没有可删的对象，不代表这份文件没水印——它可能整页就是一张图。"""
+    source = _bitmap_deck_file(tmp_path / "in.pptx")
+    result = clean_pptx(source, tmp_path / "out.pptx")
+    assert result.success, result.message
+    assert result.mode == "bitmaps"
+
+
+def test_ragged_bitmap_sizes_are_refused(tmp_path: Path) -> None:
+    """各页位图尺寸不一致，跨页求交集的前提就不成立，整份放弃。"""
+    from unpptx import clean_pptx_bitmaps
+
+    source = _bitmap_deck_file(tmp_path / "in.pptx", ragged=True)
+    result = clean_pptx_bitmaps(source, tmp_path / "out.pptx")
+    assert not result.success and "尺寸不一致" in result.message
+    assert not (tmp_path / "out.pptx").exists()
+
+
+def test_bitmap_deck_without_a_badge_is_left_alone(tmp_path: Path) -> None:
+    """没有跨页固定的东西就别乱涂。"""
+    from unpptx import clean_pptx_bitmaps
+
+    source = _bitmap_deck_file(tmp_path / "in.pptx", badge=False)
+    result = clean_pptx_bitmaps(source, tmp_path / "out.pptx")
+    assert not result.success and "没找到" in result.message

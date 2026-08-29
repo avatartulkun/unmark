@@ -366,26 +366,26 @@ def _check_cancel(should_cancel: CancelCallback) -> None:
 
 # ---------------------------------------------------------------- 水印检测
 
-def detect_watermark(
-    document: fitz.Document,
-    refs: Sequence[PageRef],
+def detect_in_frames(
+    frames: Iterable[tuple[str, np.ndarray]],
+    height: int,
+    width: int,
     options: CleanOptions,
-    progress: ProgressCallback = None,
     should_cancel: CancelCallback = None,
-    cache: Optional["_PageCache"] = None,
+    seen: Optional[Callable[[str, np.ndarray], None]] = None,
 ) -> tuple[Optional[Detection], str]:
-    """跨页求交集定位水印。返回 (Detection, "") 或 (None, 原因)。"""
-    if len(refs) < 3:
-        return None, f"只有 {len(refs)} 页满版位图，跨页比对不可靠；请手工框选水印区域"
+    """跨页求交集定位水印。返回 (Detection, "") 或 (None, 原因)。
 
-    height, width = refs[0].height, refs[0].width
+    只认「一串同尺寸的位图」，不关心它们是从 PDF 还是 PPTX 里掏出来的——两种格式
+    的角标是同一个东西，判据也就该是同一份代码。`frames` 给 (标签, RGB 图)，
+    标签只用在进度和报错文案里；`seen` 让调用方顺手把解码结果缓存下来。
+    """
     # 搜索区域：默认只看右下角，避免把正文里反复出现的深色元素当水印。
     x_start = int(width * (1.0 - options.corner_w))
     y_start = int(height * (1.0 - options.corner_h))
     if x_start >= width or y_start >= height:
         return None, "检测区域比例设置有误，右下角范围为空"
 
-    sample = _even_sample(refs, options.vote_sample)
     dark_votes = np.zeros((height - y_start, width - x_start), np.float32)
     contrast_votes = np.zeros_like(dark_votes)
     chroma_votes = np.zeros_like(dark_votes)
@@ -393,15 +393,12 @@ def detect_watermark(
     weak_votes = np.zeros_like(dark_votes)
     sigma = max(2.0, min(8.0, min(dark_votes.shape) / 12.0))
     used = 0
-    for position, ref in enumerate(sample, start=1):
+    for label, rgb in frames:
         _check_cancel(should_cancel)
-        if progress:
-            progress(position, len(sample), f"分析第 {ref.index + 1} 页")
-        rgb = _decode_page_image(document, ref)
         if rgb is None or rgb.shape[:2] != (height, width):
             continue
-        if cache is not None:
-            cache.put(ref.index, rgb)
+        if seen is not None:
+            seen(label, rgb)
         corner = rgb[y_start:, x_start:]
         gray = cv2.cvtColor(corner, cv2.COLOR_RGB2GRAY)
         dark_votes += (gray < options.dark).astype(np.float32)
@@ -454,6 +451,33 @@ def detect_watermark(
             mask = core_full * 255
         return Detection(mask, box, core_pixels, used, strategy), ""
     return None, "；".join(reasons)
+
+
+def detect_watermark(
+    document: fitz.Document,
+    refs: Sequence[PageRef],
+    options: CleanOptions,
+    progress: ProgressCallback = None,
+    should_cancel: CancelCallback = None,
+    cache: Optional["_PageCache"] = None,
+) -> tuple[Optional[Detection], str]:
+    """PDF 那一侧的入口：把页面解码成位图，剩下的交给 detect_in_frames。"""
+    if len(refs) < 3:
+        return None, f"只有 {len(refs)} 页满版位图，跨页比对不可靠；请手工框选水印区域"
+    height, width = refs[0].height, refs[0].width
+    sample = _even_sample(refs, options.vote_sample)
+
+    def frames():
+        for position, ref in enumerate(sample, start=1):
+            if progress:
+                progress(position, len(sample), f"分析第 {ref.index + 1} 页")
+            yield str(ref.index), _decode_page_image(document, ref)
+
+    def remember(label: str, rgb: np.ndarray) -> None:
+        if cache is not None:
+            cache.put(int(label), rgb)
+
+    return detect_in_frames(frames(), height, width, options, should_cancel, remember)
 
 
 def _refine_to_ink(
@@ -1320,6 +1344,29 @@ def _repair(
     if not np.array_equal(repaired[outside], rgb[outside]):
         raise RuntimeError("安全检查失败：Mask 外像素发生变化，已拒绝写出。")
     return repaired, work
+
+
+def repair_frame(
+    rgb: np.ndarray,
+    mask: np.ndarray,
+    options: CleanOptions,
+    box: Optional[tuple[int, int, int, int]] = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """按 options 修好一张位图，返回 (修好的图, 实际生效的掩膜)。
+
+    `_repair` 的参数是逐个摊开的（历史原因，PDF 那条路一路加上来的），别的模块
+    照着传二十个位置参数太容易错位。这里收成一个口子，PPTX 那条路直接用。
+    """
+    return _repair(rgb, mask, options.radius, options.backdrop_ring,
+                   options.backdrop_tolerance, options.graft_texture,
+                   options.residue_sweeps, options.ink_kernel,
+                   options.contrast_delta * options.residue_ratio,
+                   options.fill_quality, options.surface_tolerance,
+                   options.remove_panel, options.panel_strength,
+                   options.panel_max_alpha, options.panel_box, box,
+                   options.defrost, options.defrost_tolerance,
+                   options.defrost_coherence, options.defrost_max_lift,
+                   options.defrost_max_area)
 
 
 def _encode_png(rgb: np.ndarray, compression: int) -> bytes:

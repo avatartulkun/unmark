@@ -2,7 +2,16 @@ from __future__ import annotations
 
 """去掉 PPTX 里跨页固定的角标水印（NotebookLM 导出等）。全程离线。
 
-和 PDF 那条路同一个判据——**内容在变、它不变**——但做法完全不同，也好得多：
+和 PDF 那条路同一个判据——**内容在变、它不变**。但 PPTX 有两种长相，走两条不同的路：
+
+  1. **水印是个形状对象**（文本框、图片、图形）→ 直接删掉。见 `clean_pptx`
+  2. **每页就是一整张图，水印烧在像素里** → 和 PDF 完全一样的处理，
+     只是图从 zip 里掏、修完再塞回去。见 `clean_pptx_bitmaps`
+
+第二种是真实导出件里更常见的那一种（实测 NotebookLM 导出的绘本 pptx 就是），
+所以 `clean_pptx` 找不到对象时会自动转到它。
+
+先说第一种，它更干净：
 
 PPTX 里的水印不是像素，是一个形状对象。所以这里不涂、不填、不重编码，
 **直接把那个对象删掉**。后果是：
@@ -20,12 +29,17 @@ PPTX 里的水印不是像素，是一个形状对象。所以这里不涂、不
 
 import hashlib
 import re
+import shutil
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
+import cv2
+import numpy as np
 from pptx import Presentation
-from pptx.util import Emu
+
+from unwatermark import CleanOptions, detect_in_frames, repair_frame
 
 ProgressCallback = Optional[Callable[[int, int, str], None]]
 
@@ -93,6 +107,13 @@ class PptxResult:
     marks: list[Mark] = field(default_factory=list)
     removed_keys: list[str] = field(default_factory=list)
     output_path: Optional[Path] = None
+    mode: str = "objects"
+    """objects：删掉了形状对象。bitmaps：整页位图型，走的是 PDF 那一套。"""
+    strategy: str = ""
+    box: Optional[tuple[int, int, int, int]] = None
+    box_ratio: Optional[tuple[float, float, float, float]] = None
+    area_percent: float = 0.0
+    pages_processed: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -101,6 +122,12 @@ class PptxResult:
             "slides": self.slides,
             "removed": self.removed,
             "removed_keys": list(self.removed_keys),
+            "mode": self.mode,
+            "strategy": self.strategy,
+            "box": list(self.box) if self.box else None,
+            "box_ratio": list(self.box_ratio) if self.box_ratio else None,
+            "area_percent": self.area_percent,
+            "pages_processed": self.pages_processed,
             "marks": [
                 {
                     "key": m.key, "kind": m.kind, "label": m.label, "home": m.home,
@@ -332,10 +359,14 @@ def clean_pptx(
     options: PptxOptions = PptxOptions(),
     select: Optional[Sequence[str]] = None,
     progress: ProgressCallback = None,
+    bitmap_options: Optional[CleanOptions] = None,
 ) -> PptxResult:
     """删掉跨页固定的角标，写出新文件。原文件永不改写。
 
     `select` 给定要删的 `Mark.key` 列表；不给就用自动模式——只删 `eligible` 的那些。
+
+    找不到可删的对象时，自动转去试「整页位图型」——真实导出件里那种更常见，
+    整页画面被压成一张位图、水印烧在像素里，PPTX 只是个壳。
     """
     source, destination = Path(source), Path(destination)
     if progress:
@@ -352,13 +383,21 @@ def clean_pptx(
         if unknown:
             return PptxResult(False, f"指定的对象不在候选里：{sorted(unknown)[:3]}",
                               slides=total, marks=marks)
-    if not wanted:
+    if not wanted and select is None:
+        # 没有可删的对象，不代表这份文件没水印——它可能整页就是一张图
+        fallback = clean_pptx_bitmaps(source, destination, bitmap_options or CleanOptions(),
+                                      progress)
+        if fallback.success:
+            return PptxResult(**{**fallback.__dict__, "marks": marks})
         hint = "；".join(f"「{m.label}」{m.reason}" for m in marks[:3] if m.reason)
         return PptxResult(
             False,
-            "没找到跨页固定的角标" + (f"（最接近的：{hint}）" if hint else ""),
+            "没找到跨页固定的角标" + (f"（最接近的：{hint}）" if hint else "")
+            + f"；按整页位图处理也不行（{fallback.message}）",
             slides=total, marks=marks,
         )
+    if not wanted:
+        return PptxResult(False, "没有勾选任何对象", slides=total, marks=marks)
 
     chosen = {m.key: m for m in marks if m.key in wanted}
     before_digest = hashlib.sha1(source.read_bytes()).hexdigest()
@@ -442,6 +481,197 @@ def _verify(source: Path, destination: Path, chosen, options: PptxOptions) -> li
         if mark.kind == "text" and mark.label.rstrip("…") and not mark.label.endswith("…"):
             if mark.label in out_texts:
                 problems.append(f"「{mark.label}」在清理后仍然存在")
+                break
+    return problems
+
+
+# ---------------------------------------------------------------- 整页位图的 PPTX
+
+@dataclass(frozen=True)
+class BitmapDeck:
+    """每页正好一张满版图的 PPTX。`parts` 是各页图片在 zip 里的路径。"""
+
+    parts: list[str]
+    height: int
+    width: int
+
+
+def _bitmap_layout(source: Path, coverage: float = 0.98) -> tuple[list[str], str]:
+    """只看结构，不解码图片：每页是不是正好一张满版图？是的话返回各页图片的 zip 路径。
+
+    和 `_bitmap_deck` 分开是有原因的：网页端每次预览都要问一次「这是不是整页位图型」，
+    而解码十几张 PNG 要好几秒——预览接口被这个拖垮过。
+    """
+    presentation = Presentation(str(source))
+    slides = list(presentation.slides)
+    if len(slides) < 3:
+        return [], f"只有 {len(slides)} 页，跨页比对不可靠"
+    page_area = int(presentation.slide_width or 0) * int(presentation.slide_height or 0)
+    if page_area <= 0:
+        return [], "取不到页面尺寸"
+
+    parts_out: list[str] = []
+    for index, slide in enumerate(slides):
+        pictures = [sh for sh in slide.shapes if sh.shape_type == 13]
+        if len(pictures) != 1 or len(_visible_shapes(slide)) != 1:
+            return [], f"第 {index + 1} 页不是「整页一张图」"
+        picture = pictures[0]
+        rect = _rect_of(picture)
+        if rect is None:
+            return [], f"第 {index + 1} 页的图片取不到位置"
+        covered = rect[2] * rect[3]
+        if covered < coverage * page_area:
+            percent = 100.0 * covered / page_area
+            return [], f"第 {index + 1} 页的图片只覆盖 {percent:.0f}%，不是满版"
+        try:
+            # partname 形如 /ppt/media/image1.png，去掉开头的斜杠就是 zip 里的路径
+            related = slide.part.related_part(picture._element.blip_rId)
+            parts_out.append(str(related.partname)[1:])
+        except Exception:
+            return [], f"第 {index + 1} 页取不到图片数据"
+    return parts_out, ""
+
+
+def _bitmap_deck(source: Path, coverage: float = 0.98) -> tuple[Optional[BitmapDeck], str]:
+    """在结构判定之上再确认各页位图尺寸一致——跨页求交集的前提。"""
+    parts, why = _bitmap_layout(source, coverage)
+    if not parts:
+        return None, why
+    sizes = set()
+    with zipfile.ZipFile(source) as archive:
+        for name in parts:
+            image = cv2.imdecode(np.frombuffer(archive.read(name), np.uint8), cv2.IMREAD_COLOR)
+            if image is None:
+                return None, f"{name} 解码失败"
+            sizes.add(image.shape[:2])
+    if len(sizes) != 1:
+        return None, "各页位图尺寸不一致，跨页比对不成立"
+    height, width = sizes.pop()
+    return BitmapDeck(parts, height, width), ""
+
+
+def bitmap_parts(source: Path | str) -> list[str]:
+    """整页位图型 PPTX 各页图片在 zip 里的路径；不是这种就返回空表。
+
+    网页端的「处理前 / 处理后」对比要靠它取图——这种 PPTX 每页正好一张满版图，
+    所谓「渲染一页」就是把那张图读出来。
+    """
+    parts, _why = _bitmap_layout(Path(source))
+    return parts
+
+
+def clean_pptx_bitmaps(
+    source: Path | str,
+    destination: Path | str,
+    options: CleanOptions = CleanOptions(),
+    progress: ProgressCallback = None,
+) -> PptxResult:
+    """整页位图型 PPTX：把各页的图掏出来，按 PDF 那一套修好，再原位塞回去。
+
+    检测和修复**完全复用** unwatermark 那边的代码——两种容器里的角标是同一个东西，
+    判据也就该是同一份代码。这里只负责把图掏出来、塞回去。
+
+    塞回去用的是「重打一遍 zip，只替换那几个图片条目」：其余每一个部件（版式、母版、
+    关系表、主题、字体）都按原样逐字节拷过去，不经过 python-pptx 重新序列化——
+    重新序列化会顺手改写一堆无关的 XML，diff 里根本看不出到底动了什么。
+    """
+    source, destination = Path(source), Path(destination)
+    deck, why = _bitmap_deck(source)
+    if deck is None:
+        return PptxResult(False, why)
+
+    if progress:
+        progress(0, len(deck.parts), "分析各页")
+    with zipfile.ZipFile(source) as archive:
+        images = [cv2.cvtColor(cv2.imdecode(np.frombuffer(archive.read(name), np.uint8),
+                                            cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+                  for name in deck.parts]
+
+    def frames():
+        for index, image in enumerate(images):
+            if progress:
+                progress(index + 1, len(images), f"分析第 {index + 1} 页")
+            yield str(index), image
+
+    detection, why = detect_in_frames(frames(), deck.height, deck.width, options)
+    if detection is None:
+        return PptxResult(False, f"没找到跨页固定的角标（{why}）", slides=len(images))
+
+    x0, y0, x1, y1 = detection.box
+    painted = detection.mask.copy()
+    repaired: dict[str, bytes] = {}
+    for index, (name, image) in enumerate(zip(deck.parts, images)):
+        if progress:
+            progress(index + 1, len(images), f"修复第 {index + 1} 页")
+        fixed, used = repair_frame(image, detection.mask, options, detection.box)
+        painted = np.maximum(painted, used)
+        ok, buffer = cv2.imencode(Path(name).suffix or ".png",
+                                  cv2.cvtColor(fixed, cv2.COLOR_RGB2BGR),
+                                  [cv2.IMWRITE_PNG_COMPRESSION, options.png_compression])
+        if not ok:
+            return PptxResult(False, f"第 {index + 1} 页重新编码失败，原文件未改动",
+                              slides=len(images))
+        repaired[name] = buffer.tobytes()
+
+    total = int((painted > 0).sum())
+    area = 100.0 * total / float(deck.height * deck.width)
+    if total > 4 * max(1, int((detection.mask > 0).sum())) and \
+            total > max(options.panel_max_area, options.defrost_max_area) * deck.height * deck.width:
+        return PptxResult(False, f"修复区异常膨胀到整页 {area:.2f}%，已中止", slides=len(images))
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(source) as src, \
+            zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as out:
+        for item in src.infolist():
+            data = repaired.get(item.filename)
+            if data is None:
+                out.writestr(item, src.read(item.filename))   # 原样拷贝，连压缩方式都留着
+            else:
+                out.writestr(item.filename, data)
+
+    problems = _verify_bitmaps(source, destination, deck, painted, options)
+    if problems:
+        destination.unlink(missing_ok=True)
+        return PptxResult(False, "已中止：" + "；".join(problems), slides=len(images))
+
+    return PptxResult(
+        True,
+        f"{detection.strategy}命中 x{x0}-{x1} y{y0}-{y1}，涂改 {area:.3f}%，"
+        f"{len(images)} 页已处理（整页位图型 PPTX）",
+        slides=len(images), removed=len(images), output_path=destination,
+        mode="bitmaps", strategy=detection.strategy, box=detection.box,
+        box_ratio=(x0 / deck.width, y0 / deck.height, x1 / deck.width, y1 / deck.height),
+        area_percent=area, pages_processed=len(images),
+    )
+
+
+def _verify_bitmaps(source: Path, destination: Path, deck: BitmapDeck,
+                    painted: np.ndarray, options: CleanOptions) -> list[str]:
+    """写出后重新打开抽页复核：掩膜之外确实一个像素都没变，其余部件逐字节没动。"""
+    problems: list[str] = []
+    outside = painted == 0
+    step = max(1, len(deck.parts) // max(1, options.verify_sample))
+    with zipfile.ZipFile(source) as src, zipfile.ZipFile(destination) as out:
+        src_names = {i.filename for i in src.infolist()}
+        out_names = {i.filename for i in out.infolist()}
+        if src_names != out_names:
+            return [f"部件清单变了（少 {len(src_names - out_names)} 个、"
+                    f"多 {len(out_names - src_names)} 个）"]
+        touched = set(deck.parts)
+        for name in sorted(src_names - touched):
+            if src.read(name) != out.read(name):
+                problems.append(f"不该改动的部件 {name} 变了")
+                break
+        for index in range(0, len(deck.parts), step):
+            name = deck.parts[index]
+            before = cv2.imdecode(np.frombuffer(src.read(name), np.uint8), cv2.IMREAD_COLOR)
+            after = cv2.imdecode(np.frombuffer(out.read(name), np.uint8), cv2.IMREAD_COLOR)
+            if after is None or after.shape != before.shape:
+                problems.append(f"第 {index + 1} 页尺寸变了")
+                break
+            if not np.array_equal(before[outside], after[outside]):
+                changed = int((before[outside] != after[outside]).any(axis=-1).sum())
+                problems.append(f"第 {index + 1} 页 Mask 之外有 {changed} 个像素被改动")
                 break
     return problems
 

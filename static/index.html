@@ -89,13 +89,13 @@
 <body>
 <div class="wrap">
   <h1>NotebookLM 去水印</h1>
-  <p class="sub">跨页求交集自动定位固定角标（NotebookLM 等）：PDF 修复整本，PPTX 直接删掉那个对象。<!--SUB_NOTE--></p>
+  <p class="sub">跨页求交集自动定位固定角标（NotebookLM 等），支持 PDF 与 PPTX。<!--SUB_NOTE--></p>
 
   <!-- 1. 选文件 -->
   <div class="card" id="step-pick">
     <div id="drop">
       <h2>把 PDF 或 PPTX 拖到这里，或点击选择</h2>
-      <p>PDF：整页是一张图的效果最好，有文字层的页会自动跳过<br>PPTX：直接删掉那个水印对象，无损，其余内容一个字不动</p>
+      <p>PDF：整页是一张图的效果最好，有文字层的页会自动跳过<br>PPTX：水印是对象就直接删掉（无损）；每页是整张图就按 PDF 那一套修</p>
     </div>
     <input type="file" id="file" accept="application/pdf,.pdf,.pptx" class="hide">
   </div>
@@ -180,7 +180,7 @@
     </div>
   </div>
 
-  <p class="foot">PDF 只修改判定出的水印像素，其余像素逐位不变；PPTX 直接删掉水印对象，无损。两者写出后都会重新打开复核，原始文件不会被改写。<!--FOOT_NOTE--></p>
+  <p class="foot">只修改判定出的水印那一小块，其余像素逐位不变；PPTX 里水印是对象时直接删掉，无损。写出后都会重新打开复核，原始文件不会被改写。<!--FOOT_NOTE--></p>
 </div>
 
 <script>
@@ -261,7 +261,8 @@ function succeed(s){
   $("banner").className = "banner ok";
   $("banner").textContent = "✅ " + r.message;
   $("download").classList.remove("hide");
-  if (s.kind === "pptx") return succeedPptx(r);
+  // 整页位图型的 PPTX 走的是和 PDF 完全一样的一套，所以结果也照 PDF 的样子看
+  if (s.kind === "pptx" && r.mode !== "bitmaps") return succeedPptx(r);
   $("compare").classList.remove("hide");
   $("marks").classList.add("hide");
   // 框选衬底暂不开放：底层修正方向是错的（把比背景更暗的区域当成白色衬底去减，
@@ -272,7 +273,7 @@ function succeed(s){
   $("pageno").max = pageCount;
   const box = (r.box || []).join(", ");
   $("meta").innerHTML = [
-    ["检测方式", r.strategy || "—"],
+    ["检测方式", (r.strategy || "—") + (r.mode === "bitmaps" ? "（整页位图型 PPTX）" : "")],
     ["水印位置", box ? `x${r.box[0]}–${r.box[2]}, y${r.box[1]}–${r.box[3]}` : "—"],
     ["涂改面积", (r.area_percent ?? 0).toFixed(3) + "% / 页"],
     ["处理页数", `${r.pages_processed} 页` + (r.skipped?.length ? `（跳过 ${r.skipped.length} 页）` : "")],
@@ -284,6 +285,7 @@ function succeed(s){
 /* PPTX 没有「渲染一页」这回事，也不需要——删了哪个对象是能直接说清楚的，
    比左右对比图更准。列出全部候选，删掉的打勾，没删的写明为什么。 */
 function succeedPptx(r){
+  // 只有「删对象」那条路才有清单可勾；整页位图型不会走到这里
   $("compare").classList.add("hide");
   $("marks").classList.remove("hide");
   renderMarks(r);

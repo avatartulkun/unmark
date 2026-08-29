@@ -84,6 +84,23 @@ def render_page(path: Path, page_index: int, scale: float = 1.4) -> Image.Image:
         return Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
 
 
+def render_slide(path: Path, page_index: int) -> Image.Image:
+    """把整页位图型 PPTX 的某一页取出来，只读，不改文件。
+
+    这种 PPTX 每页正好一张满版图，所以「渲染」就是把那张图从 zip 里读出来——
+    不必也不能用 PDF 那套渲染器。
+    """
+    import zipfile
+
+    from unpptx import bitmap_parts
+
+    parts = bitmap_parts(path)
+    if page_index < 0 or page_index >= len(parts):
+        raise ValueError("页面编号超出范围。")
+    with zipfile.ZipFile(path) as archive:
+        return Image.open(BytesIO(archive.read(parts[page_index]))).convert("RGB")
+
+
 @dataclass
 class Job:
     """一次去水印任务的全部状态；只活在内存里，进程退出即消失。"""
@@ -431,14 +448,16 @@ def create_app() -> FastAPI:
     @app.get("/api/jobs/{job_id}/preview")
     def preview(job_id: str, page: int = 1, side: str = "after", zoom: int = 0) -> Response:
         job = _get_job(job_id)
-        if job.kind != "pdf":
-            # PPTX 没有「渲染一页」这回事；删了什么直接在结果里列出来，比图更准
-            raise HTTPException(status_code=409, detail="PPTX 没有页面预览，请看删除清单")
+        mode = (job.result or {}).get("mode")
+        if job.kind == "pptx" and mode != "bitmaps":
+            # 删对象那条路没有「渲染一页」这回事；删了什么直接列出来，比图更准
+            raise HTTPException(status_code=409, detail="这份 PPTX 是删对象处理的，请看删除清单")
         path = job.source if side == "before" else job.destination
         if not path.exists():
             raise HTTPException(status_code=404, detail="该版本尚未生成")
         try:
-            image = render_page(path, page - 1)
+            image = (render_slide(path, page - 1) if job.kind == "pptx"
+                     else render_page(path, page - 1))
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
         box_ratio = (job.result or {}).get("box_ratio") if zoom else None
