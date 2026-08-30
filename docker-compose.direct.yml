@@ -18,7 +18,7 @@ services:
     environment:
       UNMARK_HOST: "0.0.0.0"
       UNMARK_PUBLIC_MODE: "1"
-      UNMARK_MAX_UPLOAD_MB: "60"
+      UNMARK_MAX_UPLOAD_MB: "100"
       UNMARK_MAX_CONCURRENT: "2"
       UNMARK_MAX_LIVE_JOBS: "24"
       UNMARK_RATE_LIMIT: "12"

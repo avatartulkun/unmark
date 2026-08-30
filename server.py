@@ -49,8 +49,8 @@ def _env_int(name: str, default: int) -> int:
 
 
 # 公网部署时这些值全部可以用环境变量压低；本机自用保持默认即可。
-MAX_UPLOAD_BYTES = _env_int("UNMARK_MAX_UPLOAD_MB", 60) * 1024 * 1024
-"""单个上传的大小上限。整页位图的 PDF 很占地方，60 MB 大约是两三百页。"""
+MAX_UPLOAD_BYTES = _env_int("UNMARK_MAX_UPLOAD_MB", 100) * 1024 * 1024
+"""单个上传的大小上限。整页位图的 PDF 很占地方，100 MB 需要充足内存。"""
 
 MAX_CONCURRENT_JOBS = _env_int("UNMARK_MAX_CONCURRENT", 2)
 """同时真正在跑的任务数。超出的排队等待——限制的是内存峰值，不是请求数。"""
