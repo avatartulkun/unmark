@@ -437,11 +437,13 @@ def create_app() -> FastAPI:
 
     @app.get("/assets/support-wechat.png", response_class=FileResponse)
     def support_wechat() -> FileResponse:
-        return FileResponse(STATIC_DIR / "assets" / "support-wechat.png", media_type="image/png")
+        return FileResponse(STATIC_DIR / "assets" / "support-wechat.png", media_type="image/png",
+                            headers={"Cache-Control": "no-cache"})
 
     @app.get("/assets/support-alipay.png", response_class=FileResponse)
     def support_alipay() -> FileResponse:
-        return FileResponse(STATIC_DIR / "assets" / "support-alipay.png", media_type="image/png")
+        return FileResponse(STATIC_DIR / "assets" / "support-alipay.png", media_type="image/png",
+                            headers={"Cache-Control": "no-cache"})
 
     @app.get("/healthz")
     def healthz() -> JSONResponse:
