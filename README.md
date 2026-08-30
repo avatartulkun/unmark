@@ -25,6 +25,12 @@ PDF 处理完成后还可以生成一个独立的增强版本：上传 PNG / JPG
 | --- | --- |
 | <img src="static/assets/support-wechat.png" width="260" alt="微信支持二维码"> | <img src="static/assets/support-alipay.png" width="260" alt="支付宝支持二维码"> |
 
+也可以使用 USDC（仅限 TRON / TRC20 网络）支持项目：
+
+`TSAdZm2yNMZCpmd8ussPgrg7pnNYdv9eph`
+
+> 请勿使用其他币种或网络，否则资产可能永久丢失。转账前请再次核对网络和地址。
+
 首次使用需要装依赖：
 
 ```bash
