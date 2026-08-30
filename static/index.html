@@ -30,18 +30,16 @@
               border-radius:9px;border:1px solid var(--line)}
 
   /* 语言切换 */
-  .langs{position:absolute;top:24px;right:max(150px,calc((100% - 730px)/2));z-index:10;
-         display:flex;gap:2px;background:rgba(255,255,255,.08);
+  .langs{display:flex;flex:0 0 auto;gap:2px;background:rgba(255,255,255,.08);
          border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:3px}
   .langs button{border:0;background:transparent;color:rgba(255,255,255,.58);
                 font:600 12px/1 inherit;padding:7px 12px;border-radius:7px;cursor:pointer}
   .langs button.on{background:rgba(255,255,255,.14);color:#fff}
-  .support-corner{position:fixed;top:23px;right:max(24px,calc((100% - 984px)/2));z-index:80;
-                  display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid rgba(255,255,255,.35);
+  .support-nav{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid rgba(255,255,255,.35);
                   border-radius:10px;background:#FF4D6D;color:#fff;font-size:12.5px;font-weight:750;
                   box-shadow:0 8px 24px rgba(201,33,73,.3)}
-  .support-corner::before{content:"♥";font-size:13px}
-  .support-corner:hover:not(:disabled){background:#E83E5E;border-color:#fff;transform:translateY(-1px)}
+  .support-nav::before{content:"♥";font-size:13px}
+  .support-nav:hover:not(:disabled){background:#E83E5E;border-color:#fff;transform:translateY(-1px)}
 
   /* 顶部 */
   header{position:relative;overflow:hidden;
@@ -49,7 +47,8 @@
          color:#fff;padding:28px 0 128px}
   header::after{content:"";position:absolute;inset:auto -10% -80% 35%;height:380px;
                 background:radial-gradient(circle,rgba(91,91,214,.28),transparent 66%);pointer-events:none}
-  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:58px;padding-right:145px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:58px}
+  .top-actions{display:flex;align-items:center;gap:16px}
   header .brand{display:flex;align-items:center;gap:10px;margin:0}
   header .mark{font:750 18px/1 inherit;letter-spacing:-.02em}
   header .mark::before{content:"";display:inline-block;width:9px;height:9px;margin-right:9px;
@@ -278,11 +277,13 @@
   @media (max-width:620px){
     .pair{grid-template-columns:1fr}
     .wrap{padding:0 18px}
-    .langs{top:18px;right:132px}
-    .support-corner{top:18px;right:18px;padding:8px 12px}
     header{padding:22px 0 104px}
-    .topbar{margin:54px 0 34px;padding-right:0}
-    .topnav{display:none}
+    .topbar{margin-bottom:42px;gap:10px}
+    .top-actions{gap:8px}
+    .topnav{gap:8px}
+    .topnav a{display:none}
+    .support-nav{padding:8px 11px}
+    .langs button{padding:7px 9px}
     header .tag{display:none}
     header h1{font-size:34px}
     header p{font-size:15px}
@@ -316,12 +317,6 @@
 <body>
 <a class="skip" href="#tool" data-zh="跳到工具" data-en="Skip to the tool">跳到工具</a>
 
-<div class="langs">
-  <button id="lang-zh" onclick="setLang('zh')" class="on">中文</button>
-  <button id="lang-en" onclick="setLang('en')">EN</button>
-</div>
-<button class="support-corner open-support" data-zh="支持项目" data-en="Support">支持项目</button>
-
 <header>
   <div class="wrap">
     <div class="topbar">
@@ -329,11 +324,18 @@
         <span class="mark">unmark</span>
         <span class="tag" data-zh="小产品实验室" data-en="Tiny Lab">小产品实验室</span>
       </div>
-      <nav class="topnav" aria-label="Primary">
-        <a href="#how" data-zh="使用方法" data-en="How it works">使用方法</a>
-        <a href="#privacy" data-zh="隐私与安全" data-en="Privacy">隐私与安全</a>
-        <a href="https://github.com/avatartulkun/unmark" target="_blank" rel="noopener">GitHub</a>
-      </nav>
+      <div class="top-actions">
+        <nav class="topnav" aria-label="Primary">
+          <a href="#how" data-zh="使用方法" data-en="How it works">使用方法</a>
+          <a href="#privacy" data-zh="隐私与安全" data-en="Privacy">隐私与安全</a>
+          <a href="https://github.com/avatartulkun/unmark" target="_blank" rel="noopener">GitHub</a>
+          <button class="support-nav open-support" data-zh="支持项目" data-en="Support">支持项目</button>
+        </nav>
+        <div class="langs">
+          <button id="lang-zh" onclick="setLang('zh')" class="on">中文</button>
+          <button id="lang-en" onclick="setLang('en')">EN</button>
+        </div>
+      </div>
     </div>
     <h1 data-zh="干净地去掉 NotebookLM 水印"
         data-en="Remove NotebookLM watermarks, cleanly">干净地去掉 NotebookLM 水印</h1>
