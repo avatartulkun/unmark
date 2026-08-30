@@ -445,6 +445,11 @@ def create_app() -> FastAPI:
         return FileResponse(STATIC_DIR / "assets" / "support-alipay.png", media_type="image/png",
                             headers={"Cache-Control": "no-cache"})
 
+    @app.get("/assets/support-binance-usdc-tron.png", response_class=FileResponse)
+    def support_binance_usdc_tron() -> FileResponse:
+        return FileResponse(STATIC_DIR / "assets" / "support-binance-usdc-tron.png", media_type="image/png",
+                            headers={"Cache-Control": "no-cache"})
+
     @app.get("/healthz")
     def healthz() -> JSONResponse:
         """给部署平台探活用。"""

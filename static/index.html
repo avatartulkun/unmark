@@ -239,6 +239,8 @@
   .support-crypto-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
   .support-crypto-head h3{margin:0}.network-badge{padding:3px 8px;border-radius:999px;background:#E9F8F0;
                                                   color:#087A49;font-size:10.5px;font-weight:750}
+  .crypto-body{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;align-items:center}
+  .crypto-qr{display:block;width:150px;height:150px;border-radius:10px;background:#fff}
   .wallet-row{display:flex;align-items:center;gap:9px}.wallet-address{min-width:0;flex:1;padding:9px 10px;
               border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);
               font:11.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
@@ -306,6 +308,7 @@
     .wechat-qr{margin:0 auto}
     .decorate-grid{grid-template-columns:1fr 1fr}.decorate-grid .field:first-child{grid-column:1/-1}
     .support-grid{grid-template-columns:1fr}.support-shell{padding:20px}
+    .crypto-body{grid-template-columns:1fr}.crypto-qr{width:min(210px,100%);height:auto;margin:0 auto}
   }
   @media (prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
@@ -644,9 +647,12 @@
       <div class="support-method"><h3 data-zh="支付宝" data-en="Alipay">支付宝</h3><img src="/assets/support-alipay.png?v=3" data-zh-alt="支付宝支持二维码" data-en-alt="Alipay support QR code" alt="支付宝支持二维码"></div>
       <div class="support-method support-crypto">
         <div class="support-crypto-head"><h3 data-zh="USDC 加密货币" data-en="USDC crypto">USDC 加密货币</h3><span class="network-badge">TRON (TRC20)</span></div>
-        <div class="wallet-row"><code class="wallet-address" id="crypto-address">TSAdZm2yNMZCpmd8ussPgrg7pnNYdv9eph</code>
-          <button class="copy-wallet" id="copy-wallet" data-zh="复制地址" data-en="Copy address">复制地址</button></div>
-        <span class="crypto-warning" data-zh="仅接收 TRON 网络上的 USDC；使用其他币种或网络可能造成资产永久丢失。" data-en="USDC on TRON only. Other assets or networks may be permanently lost.">仅接收 TRON 网络上的 USDC；使用其他币种或网络可能造成资产永久丢失。</span>
+        <div class="crypto-body">
+          <img class="crypto-qr" src="/assets/support-binance-usdc-tron.png?v=1" data-zh-alt="USDC TRON 钱包地址二维码" data-en-alt="USDC TRON wallet address QR code" alt="USDC TRON 钱包地址二维码">
+          <div><div class="wallet-row"><code class="wallet-address" id="crypto-address">TSAdZm2yNMZCpmd8ussPgrg7pnNYdv9eph</code>
+            <button class="copy-wallet" id="copy-wallet" data-zh="复制地址" data-en="Copy address">复制地址</button></div>
+          <span class="crypto-warning" data-zh="可使用币安扫描此地址二维码。仅接收 TRON 网络上的 USDC；使用其他币种或网络可能造成资产永久丢失。" data-en="Scan this address QR code with Binance. USDC on TRON only; other assets or networks may be permanently lost.">可使用币安扫描此地址二维码。仅接收 TRON 网络上的 USDC；使用其他币种或网络可能造成资产永久丢失。</span></div>
+        </div>
       </div>
     </div>
     <p class="support-note" data-zh="完全自愿，不影响任何功能。请在付款前核对收款人信息。" data-en="Entirely optional and never affects any feature. Verify the recipient before paying.">完全自愿，不影响任何功能。请在付款前核对收款人信息。</p>

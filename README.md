@@ -21,9 +21,9 @@ PDF 处理完成后还可以生成一个独立的增强版本：上传 PNG / JPG
 
 如果 unmark 帮到了你，可以自愿支持项目维护与服务器费用。是否支持不会影响任何功能。
 
-| 微信支付 | 支付宝 |
-| --- | --- |
-| <img src="static/assets/support-wechat.png" width="260" alt="微信支持二维码"> | <img src="static/assets/support-alipay.png" width="260" alt="支付宝支持二维码"> |
+| 微信支付 | 支付宝 | USDC（TRON / TRC20） |
+| --- | --- | --- |
+| <img src="static/assets/support-wechat.png" width="220" alt="微信支持二维码"> | <img src="static/assets/support-alipay.png" width="220" alt="支付宝支持二维码"> | <img src="static/assets/support-binance-usdc-tron.png" width="220" alt="USDC TRON 钱包地址二维码"> |
 
 也可以使用 USDC（仅限 TRON / TRC20 网络）支持项目：
 
