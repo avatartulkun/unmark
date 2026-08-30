@@ -410,6 +410,11 @@ def create_app() -> FastAPI:
     def index() -> HTMLResponse:
         return HTMLResponse(_render_index())
 
+    @app.get("/assets/wechat-qr.png", response_class=FileResponse)
+    def wechat_qr() -> FileResponse:
+        """公众号二维码是页面自身资源；使用固定路径，不开放任意静态文件读取。"""
+        return FileResponse(STATIC_DIR / "assets" / "wechat-qr.png", media_type="image/png")
+
     @app.get("/healthz")
     def healthz() -> JSONResponse:
         """给部署平台探活用。"""
