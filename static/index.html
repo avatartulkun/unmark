@@ -272,6 +272,13 @@
 
   footer{border-top:1px solid var(--line);margin-top:8px;padding:24px 0 44px;
          color:var(--ink-soft);font-size:13px}
+  .domain-memory{margin-top:20px;padding:18px 20px;border:1px solid var(--line);border-radius:13px;
+                 background:#F0F1F5;color:var(--ink)}
+  .domain-memory p{margin:0 0 4px;color:var(--ink-soft);font-size:12px}
+  .domain-name{display:block;font:750 17px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+  .domain-words{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;max-width:430px;margin-top:7px;
+                color:var(--ink-soft);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:center}
+  .domain-words strong{color:var(--ink);font-family:inherit;font-size:14px}
   @media (hover:hover) and (pointer:fine){
     #drop:hover{border-color:var(--primary);background:var(--primary-soft)}
     .links a:hover{transform:translateY(-2px)}
@@ -309,6 +316,7 @@
     .decorate-grid{grid-template-columns:1fr 1fr}.decorate-grid .field:first-child{grid-column:1/-1}
     .support-grid{grid-template-columns:1fr}.support-shell{padding:20px}
     .crypto-body{grid-template-columns:1fr}.crypto-qr{width:min(210px,100%);height:auto;margin:0 auto}
+    .domain-memory{padding:15px}.domain-name{font-size:15px}.domain-words{font-size:11px}.domain-words strong{font-size:12px}
   }
   @media (prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
@@ -635,6 +643,16 @@
   <p id="foot-line"><!--FOOT_NOTE--></p>
   <p class="row"><span data-zh="unmark · 小产品实验室" data-en="unmark · Tiny Lab">unmark · 小产品实验室</span>
     <button class="support-link open-support" data-zh="支持项目" data-en="Support">支持项目</button></p>
+  <div class="domain-memory">
+    <p data-zh="域名助记，换台电脑也能找到" data-en="Remember the domain and find it on any computer">域名助记，换台电脑也能找到</p>
+    <span class="domain-name">unmark.tinylabpro.com</span>
+    <div class="domain-words" aria-label="Domain mnemonic">
+      <span>unmark<br><strong data-zh="去水印" data-en="remove marks">去水印</strong></span>
+      <span>tiny<br><strong data-zh="小" data-en="tiny">小</strong></span>
+      <span>lab<br><strong data-zh="实验室" data-en="lab">实验室</strong></span>
+      <span>pro<br><strong data-zh="专业" data-en="pro">专业</strong></span>
+    </div>
+  </div>
 </footer>
 
 <dialog class="support-modal" id="support-dialog" aria-labelledby="support-title">
