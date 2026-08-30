@@ -30,12 +30,18 @@
               border-radius:9px;border:1px solid var(--line)}
 
   /* 语言切换 */
-  .langs{position:absolute;top:24px;right:max(24px,calc((100% - 984px)/2));z-index:10;
+  .langs{position:absolute;top:24px;right:max(150px,calc((100% - 730px)/2));z-index:10;
          display:flex;gap:2px;background:rgba(255,255,255,.08);
          border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:3px}
   .langs button{border:0;background:transparent;color:rgba(255,255,255,.58);
                 font:600 12px/1 inherit;padding:7px 12px;border-radius:7px;cursor:pointer}
   .langs button.on{background:rgba(255,255,255,.14);color:#fff}
+  .support-corner{position:fixed;top:23px;right:max(24px,calc((100% - 984px)/2));z-index:80;
+                  display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid rgba(255,255,255,.35);
+                  border-radius:10px;background:#FF4D6D;color:#fff;font-size:12.5px;font-weight:750;
+                  box-shadow:0 8px 24px rgba(201,33,73,.3)}
+  .support-corner::before{content:"♥";font-size:13px}
+  .support-corner:hover:not(:disabled){background:#E83E5E;border-color:#fff;transform:translateY(-1px)}
 
   /* 顶部 */
   header{position:relative;overflow:hidden;
@@ -263,9 +269,10 @@
   @media (max-width:620px){
     .pair{grid-template-columns:1fr}
     .wrap{padding:0 18px}
-    .langs{top:18px;right:18px}
+    .langs{top:18px;right:132px}
+    .support-corner{top:18px;right:18px;padding:8px 12px}
     header{padding:22px 0 104px}
-    .topbar{margin-bottom:48px;padding-right:104px}
+    .topbar{margin:54px 0 34px;padding-right:0}
     .topnav{display:none}
     header .tag{display:none}
     header h1{font-size:34px}
@@ -304,6 +311,7 @@
   <button id="lang-zh" onclick="setLang('zh')" class="on">中文</button>
   <button id="lang-en" onclick="setLang('en')">EN</button>
 </div>
+<button class="support-corner open-support" data-zh="支持项目" data-en="Support">支持项目</button>
 
 <header>
   <div class="wrap">
