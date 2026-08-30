@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>unmark — 去掉导出文件右下角的固定角标</title>
-<meta name="description" content="去掉 PDF / PPTX 右下角的固定角标水印（NotebookLM 等导出件）。不靠模板图，跨页求交集自动定位；只动那一小块，其余像素逐位不变。">
+<title>unmark — NotebookLM 去水印</title>
+<meta name="description" content="去掉 NotebookLM 导出的 PDF / PPTX 右下角那个固定角标。只动水印那一小块，原件不改动。">
 <style>
   /* 配色跟着「小产品实验室」其余几件东西走，好让它们看起来像一家的 */
   :root{
@@ -31,7 +31,7 @@
   /* 语言切换 */
   .langs{position:fixed;top:16px;right:18px;z-index:100;display:flex;gap:3px;
          background:rgba(11,30,62,.5);border:1px solid rgba(255,255,255,.22);
-         border-radius:999px;padding:3px;backdrop-filter:blur(8px)}
+         border-radius:999px;padding:3px}
   .langs button{border:none;background:transparent;color:rgba(255,255,255,.8);
                 font:700 13px/1 inherit;padding:7px 15px;border-radius:999px;cursor:pointer}
   .langs button.on{background:#fff;color:var(--primary-dark)}
@@ -120,7 +120,10 @@
   .prose li{margin-bottom:5px}
   .prose b{color:var(--ink)}
   .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-  table{width:100%;border-collapse:collapse;font-size:14px;margin:4px 0 10px}
+  /* 三列表格在窄屏上缩不到 390px 以下，会把整个文档撑宽、右边文字被裁掉。
+     所以让它在自己的盒子里横向滚动，别去挤页面。 */
+  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:4px 0 10px}
+  table{width:100%;min-width:520px;border-collapse:collapse;font-size:14px;margin:0}
   th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
   th{background:#F4F8FF;font-weight:600;color:var(--ink)}
   td{color:var(--ink-soft)}
@@ -160,15 +163,13 @@
       <span class="mark">unmark</span>
       <span class="tag" data-zh="小产品实验室" data-en="Tiny Lab">小产品实验室</span>
     </div>
-    <h1 data-zh="去掉导出文件右下角的固定角标"
-        data-en="Remove the fixed corner badge from exported files">去掉导出文件右下角的固定角标</h1>
-    <p data-zh="不靠内置模板图。水印的定义就是「内容在变、它不变」——把若干页叠起来求交集，在几乎每一页同一坐标都成立的，才算水印。换字体、换版本、换成别家的角标，都还认得出来。"
-       data-en="No built-in template image. A watermark is simply the part that stays put while the content changes — so pages get stacked and intersected, and only what holds at the same coordinates on nearly every page counts. Change the font, the version, even the vendor, and it still gets found.">不靠内置模板图。水印的定义就是「内容在变、它不变」——把若干页叠起来求交集，在几乎每一页同一坐标都成立的，才算水印。换字体、换版本、换成别家的角标，都还认得出来。</p>
+    <h1 data-zh="NotebookLM 去水印" data-en="NotebookLM watermark remover">NotebookLM 去水印</h1>
+    <p data-zh="去掉 NotebookLM 导出件右下角那个固定角标。把文件拖进来，等一下，下载干净的版本。"
+       data-en="Removes the fixed badge in the bottom-right corner of NotebookLM exports. Drop your file in, wait a moment, download the clean version.">去掉 NotebookLM 导出件右下角那个固定角标。把文件拖进来，等一下，下载干净的版本。</p>
     <div class="chips">
       <span data-zh="PDF 与 PPTX" data-en="PDF and PPTX">PDF 与 PPTX</span>
-      <span data-zh="只动那一小块，其余逐位不变" data-en="Touches only that patch — the rest is bit-for-bit identical">只动那一小块，其余逐位不变</span>
-      <span data-zh="写出后重新打开复核" data-en="Re-opened and re-checked after writing">写出后重新打开复核</span>
-      <span data-zh="原始文件永不改写" data-en="Your original is never rewritten">原始文件永不改写</span>
+      <span data-zh="原件不会被改动" data-en="Your original stays untouched">原件不会被改动</span>
+      <span data-zh="只动水印那一小块" data-en="Only the badge is touched">只动水印那一小块</span>
     </div>
   </div>
 </header>
@@ -180,8 +181,8 @@
     <div id="drop">
       <h2 data-zh="把 PDF 或 PPTX 拖到这里，或点击选择"
           data-en="Drop a PDF or PPTX here, or click to choose">把 PDF 或 PPTX 拖到这里，或点击选择</h2>
-      <p data-zh-html="PDF：整页是一张图的效果最好，有文字层的页会自动跳过<br>PPTX：水印是对象就直接删掉（无损）；每页是整张图就按 PDF 那一套修"
-         data-en-html="PDF: works best when each page is one full-bleed image; pages with a text layer are skipped<br>PPTX: if the watermark is an object it is deleted outright (lossless); if each slide is one image, it takes the PDF route">PDF：整页是一张图的效果最好，有文字层的页会自动跳过<br>PPTX：水印是对象就直接删掉（无损）；每页是整张图就按 PDF 那一套修</p>
+         <p data-zh="NotebookLM 导出的 PDF 或 PPTX，最大 60 MB"
+            data-en="A PDF or PPTX exported from NotebookLM, up to 60 MB">NotebookLM 导出的 PDF 或 PPTX</p>
     </div>
     <input type="file" id="file" accept="application/pdf,.pdf,.pptx" class="hide">
   </div>
@@ -266,112 +267,45 @@
   <!-- ==================== 说明 ==================== -->
 
   <div class="card prose">
-    <h2 data-zh="它去的是哪一种水印" data-en="Which watermarks this handles">它去的是哪一种水印</h2>
+    <h2 data-zh="它只处理 NotebookLM 导出的文件"
+        data-en="It only handles files exported from NotebookLM">它只处理 NotebookLM 导出的文件</h2>
+    <p data-zh-html="这个工具是照着 NotebookLM 导出件右下角那个固定角标做的——就是每页同一位置、
+       写着「NotebookLM」或「Gemini Notebook」的那一小块。<b>别的水印它不认。</b>"
+       data-en-html="This tool is built for the fixed badge in the bottom-right corner of NotebookLM
+       exports — the small mark reading “NotebookLM” or “Gemini Notebook” that sits at the same spot
+       on every page. <b>It does not recognise other watermarks.</b>">它只认 NotebookLM 导出件右下角那个固定角标。</p>
     <div class="grid2">
       <div>
-        <h3 data-zh="能处理" data-en="Handles">能处理</h3>
+        <h3 data-zh="可以扔进来" data-en="Bring these">可以扔进来</h3>
         <ul>
-          <li data-zh="位置固定、几乎每页都在的角落标记——NotebookLM、Gemini Notebook 这类导出件的右下角角标" data-en="A corner mark that sits at a fixed spot on nearly every page — the bottom-right badge on NotebookLM / Gemini Notebook exports and the like">位置固定、几乎每页都在的角落标记</li>
-          <li data-zh="深色的、浅色的、半透明的，以及「颜色不同但一样亮」的彩色角标" data-en="Dark, light, semi-transparent, and coloured badges that differ in hue but not in brightness">深色、浅色、半透明，以及彩色角标</li>
-          <li data-zh="角标背后那层把画面模糊掉的磨砂衬底（条件见下）" data-en="The frosted backdrop that blurs the artwork behind the badge (conditions below)">角标背后那层磨砂衬底</li>
+          <li data-zh="NotebookLM 导出的 PDF" data-en="PDFs exported from NotebookLM">NotebookLM 导出的 PDF</li>
+          <li data-zh="NotebookLM 导出的 PPTX（幻灯片）" data-en="PPTX slide decks exported from NotebookLM">NotebookLM 导出的 PPTX</li>
         </ul>
       </div>
       <div>
-        <h3 data-zh="不处理" data-en="Does not handle">不处理</h3>
+        <h3 data-zh="做不了" data-en="Not these">做不了</h3>
         <ul>
-          <li data-zh="铺满整页的斜纹水印——它和画面一样大，没有「不变的那一小块」可言" data-en="Full-page diagonal watermarks — they are as large as the artwork, so there is no small invariant patch to find">铺满整页的斜纹水印</li>
-          <li data-zh="每页位置都不一样的，或只出现在少数几页的" data-en="Anything that moves from page to page, or appears on only a few pages">位置每页都变，或只在少数页出现的</li>
-          <li data-zh="有文字层的 PDF 页会自动跳过——那种水印多半是可以直接删除的文本对象，不该用涂像素的办法处理" data-en="PDF pages with a text layer are skipped on purpose — such a watermark is usually a deletable text object, and painting over pixels would be the wrong tool">有文字层的 PDF 页（会自动跳过）</li>
+          <li data-zh="铺满整页的斜纹水印" data-en="Full-page diagonal watermarks">铺满整页的斜纹水印</li>
+          <li data-zh="别家工具加的、位置不固定的水印" data-en="Watermarks from other tools, or ones that move around">位置不固定的水印</li>
+          <li data-zh="老的 .ppt 格式，请先另存为 .pptx" data-en="The old .ppt format — save as .pptx first">老的 .ppt 格式</li>
         </ul>
       </div>
     </div>
-  </div>
-
-  <div class="card prose">
-    <h2 data-zh="它怎么知道哪一块是水印" data-en="How it works out which patch is the watermark">它怎么知道哪一块是水印</h2>
-    <p data-zh="三路投票，先看暗、再看亮度反差、最后看颜色。任何一路在足够多的页面上都指向同一批像素，才算数："
-       data-en="Three voting paths — darkness first, then local brightness contrast, then colour. A patch counts only if one of them points at the same pixels on enough pages:">三路投票，先看暗、再看亮度反差、最后看颜色。</p>
-    <ul>
-      <li data-zh-html="<b>暗像素跨页交集</b> —— 深色角标" data-en-html="<b>Dark-pixel intersection</b> — for dark badges">暗像素跨页交集 —— 深色角标</li>
-      <li data-zh-html="<b>局部反差跨页交集</b> —— 判据是「和自己周围不一样」，浅色、半透明、深底上的白字都站得住；而恒定的白页边因为和背景一样，不会被误当成水印" data-en-html="<b>Local-contrast intersection</b> — the test is “differs from its own surroundings”, which holds for light, semi-transparent and white-on-dark badges; a constant white page margin matches its background, so it is not mistaken for one">局部反差跨页交集 —— 浅色、半透明、深底白字</li>
-      <li data-zh-html="<b>色度跨页交集</b> —— 前两路都只看亮度，「颜色不同但一样亮」的橙色字标会同时漏掉。这一路在 Lab 的 a/b 平面上比，与亮度无关" data-en-html="<b>Chroma intersection</b> — the first two paths only look at brightness, so an orange badge that differs in hue but not in luminance slips through both. This one compares in the a/b plane of Lab, independent of brightness">色度跨页交集 —— 颜色不同但一样亮的角标</li>
-    </ul>
-    <p data-zh-html="定位之后还有一步<b>削形</b>：定位用的高斯半径必须够大才站得稳，副作用是把整行字糊成一团，照着涂出来是个方块。所以再用中值滤波单独算一张「墨迹图」，把掩膜削回字形——实测涂改面积少三成。"
-       data-en-html="Then comes <b>shaping</b>: the Gaussian radius needed for reliable detection also smears a whole line of text into one blob, so painting it directly would cover a rectangle much larger than the mark. A median filter is used to compute a separate “ink map” that pulls the mask back to the glyph outlines — measured 30% less area painted.">定位之后还有一步削形，把掩膜削回字形，实测涂改面积少三成。</p>
-    <p class="note" data-zh="命中区域超过整页 0.5%，或者包围盒不像一行角标（太小、长宽比不对），一律判为误检并中止。宁可不处理，也不乱涂。"
-       data-en="If the hit covers more than 0.5% of the page, or the bounding box does not look like a one-line badge (too small, wrong aspect ratio), it is treated as a false positive and the whole job stops. Better to do nothing than to paint over your artwork.">命中区域超过整页 0.5%，或包围盒不像一行角标，一律判为误检并中止。宁可不处理，也不乱涂。</p>
-  </div>
-
-  <div class="card prose">
-    <h2 data-zh="怎么补上被涂掉的那一块" data-en="How the hole gets filled">怎么补上被涂掉的那一块</h2>
-    <p data-zh="三档，按底色的复杂程度往下退：" data-en="Three tiers, stepping down as the background gets harder:">三档，按底色的复杂程度往下退：</p>
-    <ul>
-      <li data-zh-html="<b>纯色铺底</b> —— 掩膜外一圈的底色足够一致就直接铺回去。像素级完美" data-en-html="<b>Flat fill</b> — if the ring just outside the mask is uniform enough, paint it straight back. Pixel-perfect">纯色铺底 —— 像素级完美</li>
-      <li data-zh-html="<b>渐变曲面</b> —— 拟合一张二次曲面外推。渐变是可建模的，算出来的比猜出来的准；拟合时迭代剔除离群点，免得被旁边的装饰线带偏" data-en-html="<b>Gradient surface</b> — fit a quadratic surface and extrapolate. A gradient is modellable, and a computed value beats a guessed one; outliers are rejected iteratively so a nearby decorative line cannot skew the fit">渐变曲面 —— 二次曲面外推</li>
-      <li data-zh-html="<b>inpaint</b> —— 前两档都不成立时才用，并按周围的颗粒强度补回噪声，免得留下一块异常光滑的矩形" data-en-html="<b>Inpainting</b> — only when neither of the above holds, plus synthetic grain matched to the surrounding texture so it does not leave a suspiciously smooth rectangle">inpaint —— 并补回颗粒</li>
-    </ul>
-    <h3 data-zh="角标背后那层「磨砂」" data-en="The frosted backdrop behind the badge">角标背后那层「磨砂」</h3>
-    <p data-zh-html="深色或花哨的页面上，导出工具会在角标底下垫一块圆角矩形。它<b>不是一层半透明色板，是把底下的画面做了高斯模糊</b>——这是量出来的：拿板外没被盖住的画面按 σ=4 模糊去预测板内实测值，在关键几行只差 0.5～2.6 个灰阶。"
-       data-en-html="On dark or busy pages the exporter lays a rounded rectangle under the badge. It is <b>not a translucent colour panel — it is a Gaussian blur of the artwork underneath</b>. That is measured, not assumed: blurring the uncovered artwork beside it with σ=4 predicts the values inside to within 0.5–2.6 grey levels on the rows that matter.">它不是一层半透明色板，是把底下的画面做了高斯模糊。</p>
-    <p data-zh-html="模糊是丢信息的操作，板下的细节不在文件里，任何算法都变不出来。能做的是<b>从板外把结构续进去</b>——实测一条穿过板的装饰线，板外亮度 224、板内被摊成峰值 80，重建回 213（95%）。画面横向不连贯的页面则保持原样：那种情况下硬续会拉出条纹，所以宁可不动。"
-       data-en-html="Blur destroys information — the detail underneath is simply not in the file, and no algorithm can conjure it back. What can be done is <b>continuing the structure inward from outside the panel</b>. Measured: a decorative line crossing the panel reads 224 outside and is smeared to a peak of 80 inside; it is rebuilt to 213 (95%). Pages whose artwork is not horizontally coherent are left alone — forcing it there would produce streaks.">模糊丢掉的高频找不回来；能做的是从板外把结构续进去，横向不连贯的页面则保持原样。</p>
-  </div>
-
-  <div class="card prose">
-    <h2 data-zh="PPTX 有两种长相" data-en="PPTX comes in two shapes">PPTX 有两种长相</h2>
-    <p data-zh="工具会自动分辨，你不用管：" data-en="Detected automatically — you don't have to care which:">工具会自动分辨，你不用管：</p>
-    <table>
-      <tr>
-        <th data-zh="长相" data-en="Shape">长相</th>
-        <th data-zh="水印是什么" data-en="What the watermark is">水印是什么</th>
-        <th data-zh="怎么处理" data-en="What happens">怎么处理</th>
-      </tr>
-      <tr>
-        <td data-zh="正常的幻灯片" data-en="A normal deck">正常的幻灯片</td>
-        <td data-zh="一个形状对象（文本框、图片、图形）" data-en="A shape object — text box, picture or drawing">一个形状对象</td>
-        <td data-zh-html="<b>直接删掉，无损。</b>其余每个字每张图二进制原样保留，文件只会变小" data-en-html="<b>Deleted outright — lossless.</b> Every other word and image is kept byte-for-byte; the file only gets smaller">直接删掉，无损</td>
-      </tr>
-      <tr>
-        <td data-zh="每页就是一整张图" data-en="Each slide is one big image">每页就是一整张图</td>
-        <td data-zh="烧在像素里" data-en="Burned into the pixels">烧在像素里</td>
-        <td data-zh="和 PDF 完全一样地涂掉再补；只替换 zip 里那几个图片条目，其余部件逐字节拷贝" data-en="Painted out and filled exactly as in the PDF path; only those image entries in the zip are replaced, every other part is copied byte-for-byte">和 PDF 一样处理</td>
-      </tr>
-    </table>
-    <p data-zh-html="导出件里第二种更常见。删对象那条路会把候选<b>列出来给你看</b>：打勾的已经删了，压在正文区里的默认不动——「每页都有」只说明它固定，不说明它是水印，页脚和栏目名也满足。要删由你点名。"
-       data-en-html="The second shape is the more common one in real exports. The delete-objects path <b>lists what it found</b>: ticked items were removed, and anything sitting inside the body area is left alone by default — “appears on every page” proves it is fixed, not that it is a watermark; footers and section titles qualify too. Removing those is your call.">删对象那条路会把候选列出来给你看，压在正文区里的默认不动。</p>
-    <p data-zh-html="不支持老的 <code>.ppt</code>（二进制格式），请先在 PowerPoint 里另存为 <code>.pptx</code>。"
-       data-en-html="The old binary <code>.ppt</code> format is not supported — save as <code>.pptx</code> in PowerPoint first.">不支持老的 .ppt，请先另存为 .pptx。</p>
-  </div>
-
-  <div class="card prose">
-    <h2 data-zh="不会把你的文件搞坏" data-en="It will not damage your file">不会把你的文件搞坏</h2>
-    <ul>
-      <li data-zh-html="<b>原始文件永不改写</b>，结果写到一个新文件" data-en-html="<b>Your original is never rewritten</b> — the result goes to a new file">原始文件永不改写</li>
-      <li data-zh="每页修复后强制还原掩膜外的像素并断言；中间图用 PNG 无损编码，并做一次编解码往返核对" data-en="After each page is repaired, pixels outside the mask are forcibly restored and asserted; intermediate images are PNG-encoded losslessly with a round-trip check">掩膜外像素强制还原并断言，PNG 无损往返核对</li>
-      <li data-zh="写出后重新打开，抽页逐像素复核掩膜之外确实没变" data-en="The output is re-opened after writing and sampled pages are compared pixel by pixel to confirm nothing outside the mask moved">写出后重新打开抽页复核</li>
-      <li data-zh="PPTX 只删被判定的那几个对象，其余内容二进制原样保留；复核「该留的一个没少、该删的一个没剩」，不过就删掉输出文件" data-en="For PPTX only the judged objects are removed and everything else is kept byte-for-byte; the check confirms nothing extra vanished and nothing targeted survived — if it fails, the output file is deleted">PPTX 只删判定的那几个对象，复核不过就删掉输出</li>
-    </ul>
-  </div>
-
-  <div class="card prose">
-    <h2 data-zh="已知做不到的" data-en="Known limits">已知做不到的</h2>
-    <ul>
-      <li data-zh="角标里完全不透明的那部分像素，底下的原画在导出时就已经被覆盖掉了，找不回来——填充是补，不是还原" data-en="Where the badge is fully opaque, the artwork underneath was already destroyed at export time and cannot be recovered — the fill is a plausible patch, not a restoration">完全不透明的那部分找不回来</li>
-      <li data-zh="磨砂衬底只在画面横向连贯时才能续接。手头 33 本绘本共 582 页里，这一步只在 3 页上生效——衬底恰恰是在画面花的时候才加，而画面花正是续接不成立的情况" data-en="The frosted backdrop can only be reconstructed where the artwork is horizontally coherent. Across 33 picture books (582 pages) it applied to just 3 pages — the backdrop is added precisely when the artwork is busy, which is exactly when continuation does not hold">磨砂衬底只在画面横向连贯时才能续接</li>
-      <li data-zh-html="输出的 PDF 通常比原件大：中间图用 PNG 无损重编码，而导出件原本是 JPEG。要的是像素不失真，代价是体积（实测 1.2～5 倍，取决于页面分辨率）" data-en-html="Output PDFs are usually larger: intermediate images are re-encoded losslessly as PNG while the source was JPEG. The point is pixel fidelity; the cost is size (measured 1.2×–5×, depending on page resolution)">输出 PDF 通常比原件大（1.2～5 倍）</li>
-    </ul>
+    <p class="note" data-zh="拿不准的话，直接扔进来试试。认不出来它会直接告诉你「没找到水印」，不会乱改你的文件。"
+       data-en="Not sure? Just try it. If it cannot find the badge it says so and stops — it will not guess and alter your file.">拿不准就直接扔进来试试——认不出来它会直接说「没找到水印」，不会乱改。</p>
   </div>
 
   <div class="card prose" id="privacy">
-    <h2 data-zh="你的文件去了哪里" data-en="Where your file goes">你的文件去了哪里</h2>
+    <h2 data-zh="你的文件" data-en="Your file">你的文件</h2>
+    <ul>
+      <li data-zh-html="<b>原件永远不会被改动。</b>结果是一个新文件，你自己下载" data-en-html="<b>Your original is never modified.</b> The result is a new file for you to download">原件永远不会被改动</li>
+      <li data-zh-html="<b>只动水印那一小块</b>，页面其余部分逐个像素原样保留" data-en-html="<b>Only the badge itself is touched</b> — every other pixel on the page is left exactly as it was">只动水印那一小块</li>
+      <li data-zh-html="做完会<b>重新打开检查一遍</b>，确认没有动到不该动的地方" data-en-html="The result is <b>re-opened and checked</b> afterwards to confirm nothing else moved">做完会重新打开检查一遍</li>
+    </ul>
     <p id="privacy-note"><!--PRIVACY_NOTE--></p>
     <div id="local-hint"><!--LOCAL_HINT_OPEN-->
-    <p data-zh-html="不想让文件离开自己的电脑，就把它跑在本机——代码是公开的，下载下来两条命令就能起："
-       data-en-html="If you would rather the file never left your machine, run it locally — the code is public and two commands get it up:">不想让文件离开自己的电脑，就跑在本机：</p>
-    <pre>python3 -m pip install -r requirements.txt
-python3 server.py</pre>
-    <p data-zh-html="本机模式只监听 <code>127.0.0.1</code>，文件不出这台电脑。"
-       data-en-html="Local mode listens on <code>127.0.0.1</code> only — nothing leaves the machine.">本机模式只监听 127.0.0.1。</p>
+    <p data-zh-html="想让文件完全不离开自己的电脑，也可以把它下载下来在本机跑，见下面的 GitHub。"
+       data-en-html="If you would rather the file never left your computer, you can also run it locally — see GitHub below.">想让文件完全不离开自己的电脑，也可以下载下来在本机跑。</p>
     </div>
   </div>
 
@@ -421,44 +355,28 @@ const T = {
   cancelled:    ["已取消：", "Cancelled: "],
   notDone:      ["没有处理：", "Not processed: "],
   ofPages:      [n => `/ 共 ${n} 页已处理`, n => `/ ${n} pages processed`],
-  mStrategy:    ["检测方式", "Detection"],
-  mBox:         ["水印位置", "Watermark box"],
-  mArea:        ["涂改面积", "Area painted"],
-  mPages:       ["处理页数", "Pages"],
-  mKind:        ["文件类型", "File type"],
-  mSlides:      ["幻灯片", "Slides"],
-  mRemoved:     ["删除处数", "Deletions"],
-  bitmapNote:   ["（整页位图型 PPTX）", " (full-image PPTX)"],
+  mSkipped:     ["跳过", "Skipped"],
   pagesUnit:    [n => `${n} 页`, n => `${n} pages`],
-  slidesUnit:   [n => `${n} 页`, n => `${n} slides`],
   skippedUnit:  [n => `（跳过 ${n} 页）`, n => ` (${n} skipped)`],
-  removedUnit:  [n => `${n} 处`, n => `${n} places`],
-  pptxLossless: ["PPTX（无损删除对象）", "PPTX (lossless object removal)"],
-  perPage:      ["% / 页", "% per page"],
-  marksIntro:   ["下面是这份文件里<b>每页都在同一位置、内容也相同</b>的对象。打勾的已经删掉了；压在正文区里的默认不动——「每页都有」只说明它固定，不说明它是水印，页脚和栏目名也满足。要改就改勾选，再点重新处理。",
-                 "Below are the objects that sit at <b>the same spot with the same content on every page</b>. Ticked ones were removed; anything inside the body area is left alone by default — “on every page” proves it is fixed, not that it is a watermark, and footers qualify too. Change the ticks and re-run if you disagree."],
-  marksNone:    ["没有找到跨页固定的对象。", "No objects were found to be fixed across pages."],
+
+  marksIntro:   ["打勾的已经从你的文件里删掉了。没打勾的是它<b>拿不准</b>的——比如页脚、栏目名，这些也每页都有，但多半不是你想删的东西。要一起删就勾上再点重新处理。",
+                 "The ticked items were removed from your file. The unticked ones are things it was <b>unsure about</b> — footers and section titles also appear on every page, and you probably do not want those gone. Tick them and re-run if you do."],
+  onPages:      [n => `出现在 ${n} 页`, n => `on ${n} pages`],
+  marksNone:    ["没找到可以删的水印对象。", "No watermark object was found to remove."],
   marksChanged: ["改过勾选，点左边重新处理", "Ticks changed — press the button to re-run"],
-  defaultKeep:  [r => `（默认不动：${r}）`, r => ` (left alone by default: ${r})`],
+  defaultKeep:  [() => "（拿不准，没动）", () => " (unsure — left alone)"],
   noSelection:  ["还没框选", "Nothing selected yet"],
   selected:     ["已框选，点左边的按钮重新处理", "Box set — press the button to re-run"],
   failed:       ["失败：", "Failed: "],
-  where:        [{slide:"逐页放置", layout:"版式", master:"母版"},
-                 {slide:"per slide", layout:"layout", master:"master"}],
-  okHit:        [r => `${r.strategy}命中 x${r.box[0]}–${r.box[2]}, y${r.box[1]}–${r.box[3]}，涂改 ${r.area_percent.toFixed(3)}%，${r.pages_processed} 页已处理`,
-                 r => `Found by ${strategyText(r.strategy)} at x${r.box[0]}–${r.box[2]}, y${r.box[1]}–${r.box[3]}; ${r.area_percent.toFixed(3)}% painted; ${r.pages_processed} pages processed`],
-  okDeleted:    [r => `删掉 ${r.removed_keys.length} 个跨页固定对象，共 ${r.removed} 处，${r.slides} 页已处理`,
-                 r => `Removed ${r.removed_keys.length} fixed object(s) in ${r.removed} places across ${r.slides} slides`],
+  okHit:        [r => `水印已去掉，${r.pages_processed} 页都干净了`,
+                 r => `Watermark removed — all ${r.pages_processed} pages are clean`],
+  okDeleted:    [r => `水印已去掉，${r.slides} 页都干净了`,
+                 r => `Watermark removed — all ${r.slides} slides are clean`],
 };
 
-/* 服务端给的这两类字串是中文的：检测策略名（只有三个）和进度提示（几个固定句式）。
-   它们数量少、形状稳，在前端映射一下就够，不必为此改动接口。映射不到就原样显示，
-   宁可露出一句中文，也不要显示一个猜出来的译名。 */
-const STRATEGY_EN = {
-  "暗像素跨页交集":   "dark-pixel intersection",
-  "局部反差跨页交集": "local-contrast intersection",
-  "色度跨页交集":     "chroma intersection",
-};
+/* 服务端给的进度提示是中文的，几个固定句式，在前端映射一下就够。映射不到就原样
+   显示——宁可露出一句中文，也不要显示一个猜出来的译名。
+   （检测策略名以前也在这儿映射，现在页面上不露出它了，就没必要留着。） */
 const STAGE_EN = [
   [/^分析第 (\d+) 页$/,  m => `Analysing page ${m[1]}`],
   [/^修复第 (\d+) 页$/,  m => `Repairing page ${m[1]}`],
@@ -474,10 +392,6 @@ const STAGE_EN = [
   [/^按框选范围重新处理…$/, () => "Reprocessing with the selected box…"],
   [/^排队中/,             () => "Queued — waiting for the jobs ahead…"],
 ];
-function strategyText(name){
-  if (LANG !== "en" || !name) return name || "—";
-  return STRATEGY_EN[name] || name;
-}
 function stageText(text){
   if (LANG !== "en" || !text) return text || "";
   for (const [re, f] of STAGE_EN){ const m = re.exec(text); if (m) return f(m); }
@@ -601,7 +515,7 @@ function succeed(s, quiet){
   const objects = s.kind === "pptx" && !bitmaps;
   let line;
   if (objects) line = t("okDeleted", r);
-  else if (r.box && r.box.length === 4) line = t("okHit", r) + (bitmaps ? t("bitmapNote") : "");
+  else if (r.pages_processed) line = t("okHit", r);
   else line = r.message || "";
   $("banner").className = "banner ok";
   $("banner").textContent = "✅ " + line;
@@ -616,13 +530,9 @@ function succeed(s, quiet){
   if (!quiet) page = 1;
   $("pagetotal").textContent = t("ofPages", pageCount);
   $("pageno").max = pageCount;
-  $("meta").innerHTML = [
-    [t("mStrategy"), strategyText(r.strategy) + (bitmaps ? t("bitmapNote") : "")],
-    [t("mBox"), r.box ? `x${r.box[0]}–${r.box[2]}, y${r.box[1]}–${r.box[3]}` : "—"],
-    [t("mArea"), (r.area_percent ?? 0).toFixed(3) + t("perPage")],
-    [t("mPages"), t("pagesUnit", r.pages_processed)
-                  + (r.skipped?.length ? t("skippedUnit", r.skipped.length) : "")],
-  ].map(([k,v]) => `<div><b>${k}</b>${v}</div>`).join("");
+  $("meta").innerHTML = r.skipped?.length
+    ? `<div><b>${t("mSkipped")}</b>${t("pagesUnit", r.skipped.length)}</div>`
+    : "";
   render();
   show("step-done");
 }
@@ -633,27 +543,21 @@ function succeedPptx(r, quiet){
   $("compare").classList.add("hide");
   $("marks").classList.remove("hide");
   renderMarks(r);
-  $("meta").innerHTML = [
-    [t("mKind"), t("pptxLossless")],
-    [t("mSlides"), t("slidesUnit", r.slides)],
-    [t("mRemoved"), t("removedUnit", r.removed)],
-  ].map(([k,v]) => `<div><b>${k}</b>${v}</div>`).join("");
+  $("meta").innerHTML = "";   // 上面的清单已经把删了什么逐条列清楚了
   show("step-done");
 }
 
 function renderMarks(r){
   const removed = new Set(r.removed_keys || []);
   const marks = r.marks || [];
-  const where = T.where[LANG === "en" ? 1 : 0];
   $("marksnote").innerHTML = marks.length ? t("marksIntro") : t("marksNone");
   $("marklist").innerHTML = marks.map(m => {
     const on = removed.has(m.key) ? " checked" : "";
     // 不动的理由由服务端给，只有中文——英文界面下照原样显示，别硬造一个译文
-    const why = m.reason ? `<span class="stage">${t("defaultKeep", esc(m.reason))}</span>` : "";
+    const why = m.reason ? `<span class="stage">${t("defaultKeep")}</span>` : "";
     return `<label class="markrow"><input type="checkbox" data-key="${esc(m.key)}"${on}>`
       + `<span class="marklabel">${esc(m.label)}</span>`
-      + `<span class="stage">${m.kind} · ${where[m.home] || m.home} · `
-      + `${m.hits}/${m.total} · ${m.area_percent.toFixed(2)}%</span>${why}</label>`;
+      + `<span class="stage">${t("onPages", m.hits)}</span>${why}</label>`;
   }).join("");
   $("applymarks").disabled = true;
   $("markhint").textContent = "";

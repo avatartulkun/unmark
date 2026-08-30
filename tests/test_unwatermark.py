@@ -378,7 +378,9 @@ def test_every_visible_string_has_both_languages() -> None:
         parser = Pairs()
         parser.feed(server_module._render_index())
         assert not parser.lonely, f"缺译文：{parser.lonely[:4]}"
-        assert parser.pairs > 60, f"双语文案只有 {parser.pairs} 处，像是漏掉了大半页"
+        # 这个下限只用来拦「整段文案连带译文一起丢了」，不是在钉页面长度。
+        # 页面刻意做短之后是 50 处左右，留出余量取 35。
+        assert parser.pairs > 35, f"双语文案只有 {parser.pairs} 处，像是漏掉了大半页"
 
 
 def test_ui_strings_in_script_are_paired() -> None:
@@ -392,7 +394,8 @@ def test_ui_strings_in_script_are_paired() -> None:
     assert table, "没找到那张中英对照表"
     body = table.group(1) + "\n"          # 补回被外层正则吃掉的换行，末条才匹配得上
     entries = re.findall(r"^\s{2}(\w+):\s*\[", body, re.M)
-    assert len(entries) >= 25, f"对照表只有 {len(entries)} 条，像是漏了"
+    # 同样只拦「整张表被删掉」，不钉条数。页面简化后是 22 条，留余量取 15。
+    assert len(entries) >= 15, f"对照表只有 {len(entries)} 条，像是漏了"
     # 表里每一项都必须是「中文, 英文」两个元素；只写一个的会静默退化成中文
     for name in entries:
         item = re.search(name + r":\s*\[(.*?)\],\n", body, re.S)
