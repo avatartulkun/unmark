@@ -357,7 +357,7 @@ def test_index_privacy_copy_matches_deployment_mode(monkeypatch) -> None:
     assert "不出这台电脑" not in privacy_note(public)
     assert "自动删除" in privacy_note(public)     # 说了传上去，就得说什么时候删
     assert "#local-hint{display:none}" not in public   # 给在意隐私的人一条退路
-    assert "github.com/avatartulkun/unmark" in public
+    assert "github.com/tinyproductlab/unmark" in public
 
     for html in (local, public):
         assert "<!--PRIVACY_NOTE-->" not in html and "<!--FOOT_NOTE-->" not in html

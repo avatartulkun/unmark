@@ -2,7 +2,7 @@
 #
 # unmark 一键部署（Debian / Ubuntu）
 #
-#   curl -fsSL https://raw.githubusercontent.com/avatartulkun/unmark/main/deploy/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/tinyproductlab/unmark/main/deploy/setup.sh | bash
 #
 # 或者先克隆再跑 bash deploy/setup.sh。脚本可以反复执行：已经装好的不会重装，
 # 已经在跑的会重新构建并平滑替换。
@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-REPO="https://github.com/avatartulkun/unmark.git"
+REPO="https://github.com/tinyproductlab/unmark.git"
 DIR="${UNMARK_DIR:-$HOME/unmark}"
 
 info()  { printf '\n\033[1;34m▸ %s\033[0m\n' "$*"; }

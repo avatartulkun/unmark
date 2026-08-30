@@ -293,7 +293,7 @@ def _render_index() -> str:
     ttl_zh = f"{ttl_min // 60} 小时" if ttl_min >= 60 else f"{ttl_min} 分钟"
     ttl_en = (f"{ttl_min // 60} hour{'s' if ttl_min // 60 != 1 else ''}"
               if ttl_min >= 60 else f"{ttl_min} minutes")
-    repo = "https://github.com/avatartulkun/unmark"
+    repo = "https://github.com/tinyproductlab/unmark"
 
     if PUBLIC_MODE:
         privacy_zh = (f"这是一个在线服务，文件会上传到服务器处理，单个最大 {limit_mb} MB。"

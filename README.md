@@ -203,7 +203,7 @@ docker build -t unmark . && docker run -p 8823:8823 unmark
 ### 一键部署（Debian / Ubuntu）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/avatartulkun/unmark/main/deploy/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tinyproductlab/unmark/main/deploy/setup.sh | bash
 ```
 
 检查内存与架构、装 Docker、拉代码、问一次隧道 token、构建启动、等健康检查。
