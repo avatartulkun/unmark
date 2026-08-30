@@ -435,6 +435,14 @@ def create_app() -> FastAPI:
         """公众号二维码是页面自身资源；使用固定路径，不开放任意静态文件读取。"""
         return FileResponse(STATIC_DIR / "assets" / "wechat-qr.png", media_type="image/png")
 
+    @app.get("/assets/support-wechat.png", response_class=FileResponse)
+    def support_wechat() -> FileResponse:
+        return FileResponse(STATIC_DIR / "assets" / "support-wechat.png", media_type="image/png")
+
+    @app.get("/assets/support-alipay.png", response_class=FileResponse)
+    def support_alipay() -> FileResponse:
+        return FileResponse(STATIC_DIR / "assets" / "support-alipay.png", media_type="image/png")
+
     @app.get("/healthz")
     def healthz() -> JSONResponse:
         """给部署平台探活用。"""

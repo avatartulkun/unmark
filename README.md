@@ -17,6 +17,14 @@ PPTX 看删除清单 → 下载。
 PDF 处理完成后还可以生成一个独立的增强版本：上传 PNG / JPG / WebP Logo，或直接输入
 中英文文字，并调整位置、大小和透明度。干净版不会被覆盖，两种版本可以分别下载。
 
+## 支持项目
+
+如果 unmark 帮到了你，可以自愿支持项目维护与服务器费用。是否支持不会影响任何功能。
+
+| 微信支付 | 支付宝 |
+| --- | --- |
+| <img src="static/assets/support-wechat.png" width="260" alt="微信支持二维码"> | <img src="static/assets/support-alipay.png" width="260" alt="支付宝支持二维码"> |
+
 首次使用需要装依赖：
 
 ```bash

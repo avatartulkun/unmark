@@ -214,6 +214,23 @@
   .contact-email:hover{text-decoration:underline}
   .wechat-qr{width:132px;height:132px;padding:7px;border:1px solid var(--line);
              border-radius:12px;background:#fff;box-shadow:0 5px 18px rgba(20,20,35,.07)}
+  .support-link{display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;
+                color:var(--primary);padding:4px 0;font-size:12.5px;font-weight:650;box-shadow:none}
+  .support-link::before{content:"♥";display:grid;place-items:center;width:20px;height:20px;
+                        border-radius:6px;background:#FFF0F3;color:#E54868;font-size:11px}
+  .support-link:hover:not(:disabled){color:var(--primary-dark);border-color:transparent}
+  dialog.support-modal{width:min(720px,calc(100% - 32px));max-height:calc(100vh - 32px);padding:0;
+                       border:1px solid var(--line);border-radius:18px;background:#fff;color:var(--ink);
+                       box-shadow:0 24px 80px rgba(12,18,40,.25);overflow:auto}
+  dialog.support-modal::backdrop{background:rgba(14,17,29,.56);backdrop-filter:blur(4px)}
+  .support-shell{padding:26px}.support-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
+  .support-head h2{margin:0 0 4px;font-size:19px}.support-head p{margin:0;color:var(--ink-soft);font-size:13px}
+  .support-close{width:34px;height:34px;padding:0;border-radius:9px;font-size:18px;line-height:1}
+  .support-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
+  .support-method{padding:15px;border:1px solid var(--line);border-radius:13px;background:#FAFAFB;text-align:center}
+  .support-method h3{margin:0 0 10px;font-size:13px}.support-method img{display:block;width:100%;height:min(52vh,460px);
+                      object-fit:contain;border-radius:10px;background:#fff}
+  .support-note{margin:16px 0 0;color:var(--ink-soft);font-size:11.5px;text-align:center}
 
   .section-kicker{margin:0 0 7px;color:var(--primary);font-size:11px;font-weight:750;
                   letter-spacing:.12em;text-transform:uppercase}
@@ -271,6 +288,7 @@
     .wechat-copy .wechat-name{justify-content:center}
     .wechat-qr{margin:0 auto}
     .decorate-grid{grid-template-columns:1fr 1fr}.decorate-grid .field:first-child{grid-column:1/-1}
+    .support-grid{grid-template-columns:1fr}.support-shell{padding:20px}
   }
   @media (prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
@@ -443,6 +461,7 @@
 
     <div class="row" style="margin-top:20px">
       <button class="primary" id="download" data-zh="下载去水印后的文件" data-en="Download the cleaned file">下载去水印后的文件</button>
+      <button class="support-link open-support" data-zh="支持这个项目" data-en="Support this project">支持这个项目</button>
       <button id="again" data-zh="换一个文件" data-en="Use another file">换一个文件</button>
     </div>
   </div>
@@ -592,8 +611,22 @@
 
 <footer class="wrap">
   <p id="foot-line"><!--FOOT_NOTE--></p>
-  <p data-zh="unmark · 小产品实验室" data-en="unmark · Tiny Lab">unmark · 小产品实验室</p>
+  <p class="row"><span data-zh="unmark · 小产品实验室" data-en="unmark · Tiny Lab">unmark · 小产品实验室</span>
+    <button class="support-link open-support" data-zh="支持项目" data-en="Support">支持项目</button></p>
 </footer>
+
+<dialog class="support-modal" id="support-dialog" aria-labelledby="support-title">
+  <div class="support-shell">
+    <div class="support-head"><div><h2 id="support-title" data-zh="支持这个项目" data-en="Support this project">支持这个项目</h2>
+      <p data-zh="如果 unmark 帮到了你，可以自愿支持项目维护与服务器费用。" data-en="If unmark helped you, you can voluntarily support maintenance and server costs.">如果 unmark 帮到了你，可以自愿支持项目维护与服务器费用。</p></div>
+      <button class="support-close" id="support-close" aria-label="Close">×</button></div>
+    <div class="support-grid">
+      <div class="support-method"><h3 data-zh="微信支付" data-en="WeChat Pay">微信支付</h3><img src="/assets/support-wechat.png" data-zh-alt="微信支持二维码" data-en-alt="WeChat support QR code" alt="微信支持二维码"></div>
+      <div class="support-method"><h3 data-zh="支付宝" data-en="Alipay">支付宝</h3><img src="/assets/support-alipay.png" data-zh-alt="支付宝支持二维码" data-en-alt="Alipay support QR code" alt="支付宝支持二维码"></div>
+    </div>
+    <p class="support-note" data-zh="完全自愿，不影响任何功能。请在付款前核对收款人信息。" data-en="Entirely optional and never affects any feature. Verify the recipient before paying.">完全自愿，不影响任何功能。请在付款前核对收款人信息。</p>
+  </div>
+</dialog>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -1141,6 +1174,15 @@ $("deco-create").onclick = async () => {
   finally{ $("deco-create").disabled = false; }
 };
 $("deco-download").onclick = () => location.href = `/api/jobs/${job}/download?variant=decorated`;
+
+/* ---------- 支持项目 ---------- */
+document.querySelectorAll(".open-support").forEach(button => {
+  button.onclick = () => $("support-dialog").showModal();
+});
+$("support-close").onclick = () => $("support-dialog").close();
+$("support-dialog").onclick = event => {
+  if (event.target === $("support-dialog")) $("support-dialog").close();
+};
 $("again").onclick = () => {
   if (viewingBatch){ viewingBatch = false; show("step-batch"); renderBatch(); return; }
   if (job) fetch(`/api/jobs/${job}`, {method:"DELETE"});
