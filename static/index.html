@@ -147,6 +147,18 @@
         margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
   .meta div{font-size:13px}
   .meta b{display:block;color:var(--ink-soft);font-weight:500;font-size:12px;margin-bottom:2px}
+  .decorate{margin-top:20px;padding:19px;border:1px solid #D9D7FF;border-radius:13px;background:#F8F8FF}
+  .decorate-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
+  .decorate h3{margin:0 0 3px;font-size:15px}.decorate-head p{margin:0;color:var(--ink-soft);font-size:12px}
+  .decorate-badge{white-space:nowrap;padding:4px 8px;border-radius:999px;background:#E9E7FF;color:var(--primary-dark);font-size:10.5px;font-weight:700}
+  .decorate-tabs{display:flex;gap:6px;margin-bottom:13px}
+  .decorate-tabs button{padding:7px 12px;font-size:12px}.decorate-tabs button.on{border-color:var(--primary);color:var(--primary);background:#fff}
+  .decorate-grid{display:grid;grid-template-columns:1.4fr repeat(3,minmax(100px,.7fr));gap:10px;align-items:end}
+  .field{display:grid;gap:5px;color:var(--ink-soft);font-size:11px}
+  .field input,.field select{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px;font:inherit;color:var(--ink)}
+  .field input[type=range]{padding:5px 0;border:0;background:transparent}
+  .decorate-actions{margin-top:13px}.decorate-preview{margin-top:14px;padding-top:14px;border-top:1px solid #E3E1FF}
+  .decorate-preview img{display:block;width:100%;max-height:520px;object-fit:contain;border:1px solid var(--line);border-radius:9px;background:#fff}
   .nav{display:flex;justify-content:center;gap:8px;align-items:center;margin-top:18px}
   .nav input{width:64px;padding:7px;border:1px solid var(--line);border-radius:8px;
              text-align:center;font:inherit}
@@ -258,6 +270,7 @@
     .wechat{grid-template-columns:1fr;text-align:center}
     .wechat-copy .wechat-name{justify-content:center}
     .wechat-qr{margin:0 auto}
+    .decorate-grid{grid-template-columns:1fr 1fr}.decorate-grid .field:first-child{grid-column:1/-1}
   }
   @media (prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
@@ -406,6 +419,27 @@
     </div>
 
     <div class="meta" id="meta"></div>
+
+    <section class="decorate hide" id="decorate">
+      <div class="decorate-head">
+        <div><h3 data-zh="导出增强" data-en="Enhanced export">导出增强</h3>
+          <p data-zh="在干净版本上添加自己的 Logo 或文字；不会覆盖原结果。" data-en="Add your own logo or text to the clean copy. The original result stays untouched.">在干净版本上添加自己的 Logo 或文字；不会覆盖原结果。</p></div>
+        <span class="decorate-badge" data-zh="PDF · 全部页面" data-en="PDF · All pages">PDF · 全部页面</span>
+      </div>
+      <div class="decorate-tabs">
+        <button class="on" id="deco-tab-logo" data-zh="图片 Logo" data-en="Image logo">图片 Logo</button>
+        <button id="deco-tab-text" data-zh="自定义文字" data-en="Custom text">自定义文字</button>
+      </div>
+      <div class="decorate-grid">
+        <label class="field" id="deco-logo-field"><span data-zh="Logo 图片（PNG / JPG / WebP，≤ 5 MB）" data-en="Logo image (PNG / JPG / WebP, ≤ 5 MB)">Logo 图片（PNG / JPG / WebP，≤ 5 MB）</span><input id="deco-logo" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        <label class="field hide" id="deco-text-field"><span data-zh="文字内容（最多 120 字）" data-en="Text (up to 120 characters)">文字内容（最多 120 字）</span><input id="deco-text" maxlength="120" data-zh-placeholder="例如：小产品实验室" data-en-placeholder="e.g. Tiny Lab"></label>
+        <label class="field"><span data-zh="位置" data-en="Position">位置</span><select id="deco-position"><option value="bottom-right" data-zh="右下角" data-en="Bottom right">右下角</option><option value="bottom-left" data-zh="左下角" data-en="Bottom left">左下角</option><option value="top-right" data-zh="右上角" data-en="Top right">右上角</option><option value="top-left" data-zh="左上角" data-en="Top left">左上角</option><option value="center" data-zh="居中" data-en="Center">居中</option></select></label>
+        <label class="field"><span data-zh="大小" data-en="Size">大小</span><input id="deco-size" type="range" min="5" max="40" value="16"></label>
+        <label class="field"><span data-zh="透明度" data-en="Opacity">透明度</span><input id="deco-opacity" type="range" min="10" max="100" value="80"></label>
+      </div>
+      <div class="row decorate-actions"><button class="primary" id="deco-create" data-zh="生成并预览" data-en="Generate preview">生成并预览</button><span class="stage" id="deco-status"></span></div>
+      <div class="decorate-preview hide" id="deco-preview"><img id="deco-image" alt=""><div class="row" style="margin-top:12px"><button class="primary" id="deco-download" data-zh="下载增强版 PDF" data-en="Download enhanced PDF">下载增强版 PDF</button><span class="stage" data-zh="干净版本仍可用下方按钮单独下载" data-en="The clean version remains available below">干净版本仍可用下方按钮单独下载</span></div></div>
+    </section>
 
     <div class="row" style="margin-top:20px">
       <button class="primary" id="download" data-zh="下载去水印后的文件" data-en="Download the cleaned file">下载去水印后的文件</button>
@@ -611,6 +645,11 @@ const T = {
                  r => `Watermark removed — all ${r.pages_processed} pages are clean`],
   okDeleted:    [r => `水印已去掉，${r.slides} 页都干净了`,
                  r => `Watermark removed — all ${r.slides} slides are clean`],
+  decoNeedLogo: ["请选择一张 Logo 图片。", "Please choose a logo image."],
+  decoNeedText: ["请输入要添加的文字。", "Enter the text to add."],
+  decoTooLarge: ["Logo 图片不能超过 5 MB。", "The logo image must be 5 MB or smaller."],
+  decoWorking:  ["正在生成增强版…", "Generating enhanced version…"],
+  decoReady:    ["已生成，可预览并下载。", "Ready to preview and download."],
 };
 
 /* 服务端给的进度提示是中文的，几个固定句式，在前端映射一下就够。映射不到就原样
@@ -656,6 +695,9 @@ function applyLang(lang){
   });
   document.querySelectorAll("[data-zh-alt][data-en-alt]").forEach(el => {
     el.alt = el.getAttribute("data-" + LANG + "-alt");
+  });
+  document.querySelectorAll("[data-zh-placeholder][data-en-placeholder]").forEach(el => {
+    el.placeholder = el.getAttribute("data-" + LANG + "-placeholder");
   });
   $("lang-zh").classList.toggle("on", LANG === "zh");
   $("lang-en").classList.toggle("on", LANG === "en");
@@ -860,6 +902,7 @@ function succeed(s, quiet){
   $("banner").className = "banner ok";
   $("banner").textContent = "✅ " + line;
   $("download").classList.remove("hide");
+  $("decorate").classList.toggle("hide", s.kind !== "pdf");
   $("again").textContent = viewingBatch ? t("backToBatch")
                                          : $("again").getAttribute("data-" + LANG);
 
@@ -938,6 +981,7 @@ function fail(msg, status, quiet){
                         + `<span class="detail">${esc(msg)}</span>`;
   $("compare").classList.add("hide");
   $("download").classList.add("hide");
+  $("decorate").classList.add("hide");
   $("meta").innerHTML = "";
   show("step-done");
 }
@@ -1053,6 +1097,50 @@ $("applypanel").onclick = async () => {
 };
 
 $("download").onclick = () => location.href = `/api/jobs/${job}/download`;
+
+/* ---------- 导出增强：Logo / 自定义文字 ---------- */
+let decoMode = "logo";
+function setDecoMode(mode){
+  decoMode = mode;
+  $("deco-tab-logo").classList.toggle("on", mode === "logo");
+  $("deco-tab-text").classList.toggle("on", mode === "text");
+  $("deco-logo-field").classList.toggle("hide", mode !== "logo");
+  $("deco-text-field").classList.toggle("hide", mode !== "text");
+  $("deco-size").min = mode === "logo" ? 5 : 2;
+  $("deco-size").max = mode === "logo" ? 40 : 10;
+  $("deco-size").value = mode === "logo" ? 16 : 4;
+  $("deco-preview").classList.add("hide");
+  $("deco-status").textContent = "";
+}
+$("deco-tab-logo").onclick = () => setDecoMode("logo");
+$("deco-tab-text").onclick = () => setDecoMode("text");
+$("deco-create").onclick = async () => {
+  const position = $("deco-position").value;
+  const opacity = Number($("deco-opacity").value) / 100;
+  const size = Number($("deco-size").value) / 100;
+  let url = `/api/jobs/${job}/decorate/${decoMode}?position=${position}&opacity=${opacity}&margin=.03&${decoMode === "logo" ? "width" : "size"}=${size}`;
+  let body, headers = {};
+  if (decoMode === "logo"){
+    const file = $("deco-logo").files[0];
+    if (!file) return $("deco-status").textContent = t("decoNeedLogo");
+    if (file.size > 5 * 1024 * 1024) return $("deco-status").textContent = t("decoTooLarge");
+    body = file; headers["content-type"] = file.type || "application/octet-stream";
+  }else{
+    const value = $("deco-text").value.trim();
+    if (!value) return $("deco-status").textContent = t("decoNeedText");
+    body = JSON.stringify({text:value}); headers["content-type"] = "application/json";
+  }
+  $("deco-create").disabled = true; $("deco-status").textContent = t("decoWorking");
+  try{
+    const res = await fetch(url, {method:"POST", headers, body});
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    $("deco-image").src = `/api/jobs/${job}/preview?page=${page}&side=decorated&t=${Date.now()}`;
+    $("deco-preview").classList.remove("hide");
+    $("deco-status").textContent = t("decoReady");
+  }catch(err){ $("deco-status").textContent = t("failed") + err.message; }
+  finally{ $("deco-create").disabled = false; }
+};
+$("deco-download").onclick = () => location.href = `/api/jobs/${job}/download?variant=decorated`;
 $("again").onclick = () => {
   if (viewingBatch){ viewingBatch = false; show("step-batch"); renderBatch(); return; }
   if (job) fetch(`/api/jobs/${job}`, {method:"DELETE"});

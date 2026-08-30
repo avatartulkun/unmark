@@ -37,6 +37,7 @@ from starlette.background import BackgroundTask
 
 from unpptx import PptxOptions, clean_pptx
 from unwatermark import CleanOptions, clean_pdf
+from decorate_pdf import POSITIONS, add_logo, add_text
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -121,6 +122,7 @@ class Job:
     error: str = ""
     created: datetime = field(default_factory=datetime.now)
     cancelled: bool = False
+    decorated: Optional[Path] = None
 
     @property
     def directory(self) -> Path:
@@ -137,6 +139,7 @@ class Job:
             "total": self.total,
             "result": self.result,
             "error": self.error,
+            "decorated": bool(self.decorated and self.decorated.exists()),
         }
 
 
@@ -405,6 +408,21 @@ async def _read_capped_body(request: Request) -> bytes:
     return b"".join(chunks)
 
 
+async def _read_small_body(request: Request, limit: int, label: str) -> bytes:
+    """小请求也必须边收边计数，避免无 Content-Length 时把大请求全读进内存。"""
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail=f"{label}超过大小限制")
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > limit:
+            raise HTTPException(status_code=413, detail=f"{label}超过大小限制")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="NotebookLM 去水印", docs_url=None, redoc_url=None)
 
@@ -484,7 +502,7 @@ def create_app() -> FastAPI:
         if job.kind == "pptx" and mode != "bitmaps":
             # 删对象那条路没有「渲染一页」这回事；删了什么直接列出来，比图更准
             raise HTTPException(status_code=409, detail="这份 PPTX 是删对象处理的，请看删除清单")
-        path = job.source if side == "before" else job.destination
+        path = job.source if side == "before" else (job.decorated if side == "decorated" else job.destination)
         if not path.exists():
             raise HTTPException(status_code=404, detail="该版本尚未生成")
         try:
@@ -494,6 +512,76 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc))
         box_ratio = (job.result or {}).get("box_ratio") if zoom else None
         return _png(image, box_ratio)
+
+    def _decoration_options(request: Request) -> tuple[str, float, float]:
+        position = request.query_params.get("position", "bottom-right")
+        if position not in POSITIONS:
+            raise HTTPException(status_code=400, detail="位置参数无效")
+        try:
+            opacity = float(request.query_params.get("opacity", ".8"))
+            margin = float(request.query_params.get("margin", ".03"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="透明度或边距参数无效")
+        if not .1 <= opacity <= 1 or not 0 <= margin <= .15:
+            raise HTTPException(status_code=400, detail="透明度或边距超出范围")
+        return position, opacity, margin
+
+    def _ready_pdf(job_id: str) -> Job:
+        job = _get_job(job_id)
+        if job.kind != "pdf":
+            raise HTTPException(status_code=400, detail="导出增强功能第一版仅支持 PDF")
+        if job.status != "done" or not job.destination.exists():
+            raise HTTPException(status_code=409, detail="请等待去水印完成")
+        return job
+
+    @app.post("/api/jobs/{job_id}/decorate/logo")
+    async def decorate_logo(job_id: str, request: Request) -> JSONResponse:
+        job = _ready_pdf(job_id)
+        position, opacity, margin = _decoration_options(request)
+        try:
+            width = float(request.query_params.get("width", ".16"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Logo 大小参数无效")
+        if not .05 <= width <= .4:
+            raise HTTPException(status_code=400, detail="Logo 宽度需为页面的 5%–40%")
+        payload = await _read_small_body(request, 5 * 1024 * 1024, "Logo 图片")
+        if not payload:
+            raise HTTPException(status_code=400, detail="没有收到 Logo 图片")
+        output = job.directory / f"{job.destination.stem}_加Logo.pdf"
+        try:
+            add_logo(job.destination, output, payload, position=position,
+                     width_ratio=width, opacity=opacity, margin_ratio=margin)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=f"Logo 图片无法使用：{exc}")
+        job.decorated = output
+        return JSONResponse({"ok": True, "download": f"/api/jobs/{job.id}/download?variant=decorated"})
+
+    @app.post("/api/jobs/{job_id}/decorate/text")
+    async def decorate_text(job_id: str, request: Request) -> JSONResponse:
+        job = _ready_pdf(job_id)
+        position, opacity, margin = _decoration_options(request)
+        try:
+            size = float(request.query_params.get("size", ".035"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="文字大小参数无效")
+        if not .015 <= size <= .1:
+            raise HTTPException(status_code=400, detail="文字大小超出范围")
+        try:
+            raw = await _read_small_body(request, 8 * 1024, "文字内容")
+            body = json.loads(raw or b"{}")
+            text = body.get("text", "")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise HTTPException(status_code=400, detail="文字内容无效")
+        if not isinstance(text, str):
+            raise HTTPException(status_code=400, detail="文字内容无效")
+        output = job.directory / f"{job.destination.stem}_加文字.pdf"
+        try:
+            add_text(job.destination, output, text, position=position,
+                     size_ratio=size, opacity=opacity, margin_ratio=margin)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        job.decorated = output
+        return JSONResponse({"ok": True, "download": f"/api/jobs/{job.id}/download?variant=decorated"})
 
     @app.post("/api/jobs/{job_id}/marks")
     async def rerun_with_marks(job_id: str, request: Request) -> JSONResponse:
@@ -554,10 +642,13 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True, "panel_box": panel})
 
     @app.get("/api/jobs/{job_id}/download")
-    def download(job_id: str) -> FileResponse:
+    def download(job_id: str, variant: str = "clean") -> FileResponse:
         job = _get_job(job_id)
         if job.status != "done" or not job.destination.exists():
             raise HTTPException(status_code=409, detail="任务尚未成功完成")
+        target = job.decorated if variant == "decorated" else job.destination
+        if target is None or not target.exists():
+            raise HTTPException(status_code=404, detail="增强导出文件尚未生成")
         media = ("application/vnd.openxmlformats-officedocument.presentationml.presentation"
                  if job.kind == "pptx" else "application/pdf")
         # no-transform 是给中间层看的：别动这个响应体。
@@ -565,8 +656,8 @@ def create_app() -> FastAPI:
         # 同一个 18.8 MB 文件的下载会从 2 秒掉到 120～200 秒（8 MB/s → 90 KB/s），
         # 而响应里根本没有 content-encoding——白挨一遍压缩，还把传输拖垮。
         # PDF 和 PPTX 本来就是压缩过的容器，再压一遍毫无收益。
-        return FileResponse(job.destination, media_type=media,
-                            filename=job.destination.name,
+        return FileResponse(target, media_type=media,
+                            filename=target.name,
                             headers={"Cache-Control": "no-transform"})
 
     @app.get("/api/batch/download")
