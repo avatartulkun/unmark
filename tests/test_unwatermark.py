@@ -11,6 +11,7 @@ import time
 import types
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import fitz
@@ -243,6 +244,20 @@ def test_index_page_is_served(base_url) -> None:
     status, body = _get(base_url + "/")
     assert status == 200
     assert "去水印" in body.decode("utf-8")
+
+
+def test_batch_download_returns_zip(base_url, tmp_path: Path) -> None:
+    source = tmp_path / "batch.pdf"
+    _build_deck(source)
+    state = _wait(base_url, _post_pdf(base_url, source, "batch.pdf"))
+    assert state["status"] == "done", state
+
+    status, body = _get(f"{base_url}/api/batch/download?jobs={state['id']}")
+    assert status == 200 and body.startswith(b"PK")
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        names = archive.namelist()
+        assert len(names) == 1 and names[0].endswith("_已去水印.pdf")
+        assert archive.read(names[0]).startswith(b"%PDF")
 
 
 # ------------------------------------------------------- 公网部署用的限制

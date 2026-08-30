@@ -75,6 +75,9 @@
   #drop.hot{border-color:var(--primary);background:var(--primary-soft);transform:scale(.995)}
   #drop h2{margin:0 0 7px;font-size:17px;letter-spacing:-.015em}
   #drop p{margin:0;color:var(--ink-soft);font-size:12.5px}
+  .upload-rules{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .upload-rules span{padding:4px 8px;border:1px solid var(--line);border-radius:999px;
+                     background:#fff;color:var(--ink-soft);font-size:11px}
 
   button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#fff;
          color:var(--ink);padding:10px 17px;cursor:pointer;
@@ -106,6 +109,24 @@
   .bar.indet>i{width:35%;animation:slide 900ms linear infinite}
   @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(390%)}}
   .stage{color:var(--ink-soft);font-size:13px}
+  .batch-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}
+  .batch-head h2{margin:0 0 3px;font-size:17px}
+  .batch-list{display:grid;gap:9px}
+  .batch-item{display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:14px;
+              align-items:center;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:#FAFAFB}
+  .batch-file{min-width:0}
+  .batch-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;font-size:13px}
+  .batch-size{color:var(--ink-soft);font-size:11.5px}
+  .batch-progress{min-width:0}
+  .batch-progress .bar{height:5px;margin:0 0 5px}
+  .batch-status{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-soft);font-size:11px}
+  .batch-actions{display:flex;gap:6px}
+  .batch-actions button,.batch-actions a{padding:7px 10px;border:1px solid var(--line);border-radius:8px;
+                                       background:#fff;color:var(--ink);font:600 11.5px/1.4 inherit;
+                                       text-decoration:none;cursor:pointer}
+  .batch-actions a{color:var(--primary);border-color:#D9D7FF}
+  .batch-actions button:disabled{opacity:.4}
+  .batch-summary{margin-top:15px;padding-top:15px;border-top:1px solid var(--line)}
 
   .banner{border-radius:12px;padding:15px 17px;margin-bottom:24px;font-size:14px;font-weight:600}
   .banner.ok{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-line)}
@@ -227,6 +248,10 @@
     #step-run{padding:24px 20px}
     .prose{padding:22px 20px}
     .row .primary{flex:1}
+    .batch-head{display:block}
+    .batch-head button{margin-top:10px}
+    .batch-item{grid-template-columns:minmax(0,1fr);gap:9px}
+    .batch-actions{justify-content:flex-start}
     .feature-grid,.steps-grid{grid-template-columns:1fr}
     .mini-step{padding:8px 0 18px}
     .mini-step:not(:last-child)::after{display:none}
@@ -283,8 +308,32 @@
           data-en="Choose a file to get started">选择文件，开始去水印</h2>
       <p data-zh="拖放或点击选择 NotebookLM 导出的 PDF / PPTX · 最大 100 MB"
          data-en="Drop or choose a PDF / PPTX exported from NotebookLM · up to 100 MB">拖放或点击选择 NotebookLM 导出的 PDF / PPTX · 最大 100 MB</p>
+      <div class="upload-rules" aria-label="Upload limits">
+        <span data-zh="每批最多 10 个" data-en="Up to 10 per batch">每批最多 10 个</span>
+        <span data-zh="单个最大 100 MB" data-en="100 MB per file">单个最大 100 MB</span>
+        <span data-zh="单批总计不超过 300 MB" data-en="300 MB total per batch">单批总计不超过 300 MB</span>
+        <span data-zh="仅支持 PDF / PPTX" data-en="PDF / PPTX only">仅支持 PDF / PPTX</span>
+      </div>
     </div>
-    <input type="file" id="file" accept="application/pdf,.pdf,.pptx" class="hide">
+    <input type="file" id="file" accept="application/pdf,.pdf,.pptx" multiple class="hide">
+  </div>
+
+  <!-- 批量任务 -->
+  <div class="card hide" id="step-batch">
+    <div class="batch-head">
+      <div>
+        <h2 data-zh="批量处理" data-en="Batch processing">批量处理</h2>
+        <span class="stage" id="batch-count"></span>
+      </div>
+      <button id="batch-cancel" data-zh="取消未完成任务" data-en="Cancel unfinished">取消未完成任务</button>
+    </div>
+    <div class="batch-list" id="batch-list"></div>
+    <div class="batch-summary row">
+      <button class="primary" id="batch-download" disabled data-zh="下载全部成功文件 (.zip)"
+              data-en="Download all successful files (.zip)">下载全部成功文件 (.zip)</button>
+      <button id="batch-again" data-zh="选择新一批文件" data-en="Choose another batch">选择新一批文件</button>
+      <span class="stage" id="batch-summary"></span>
+    </div>
   </div>
 
   <!-- 2. 处理中 -->
@@ -514,7 +563,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-let job = null, pageCount = 1, page = 1, poll = null, LANG = "zh";
+let job = null, pageCount = 1, page = 1, poll = null, LANG = "zh", batch = [], viewingBatch = false;
 /* 必须在 initLang() 之前声明：applyLang → redraw 会读它，而 let 有暂时性死区，
    放到下面去会在页面一加载就抛 ReferenceError，整段脚本直接不跑。 */
 let lastState = null;
@@ -529,6 +578,19 @@ const T = {
   submitting:   ["提交中…", "Submitting…"],
   lost:         ["任务已丢失（可能已过期，请重新上传）", "Job is gone — it may have expired; please upload again"],
   pickFile:     ["请选择 PDF 或 PPTX 文件。", "Please choose a PDF or PPTX file."],
+  tooMany:      ["每批最多选择 10 个文件。", "You can select up to 10 files per batch."],
+  tooLarge:     [name => `${name} 超过单个文件 100 MB 的限制。`, name => `${name} exceeds the 100 MB per-file limit.`],
+  batchTooLarge:["这一批文件总计超过 300 MB，请减少文件后重试。", "This batch exceeds 300 MB in total. Remove some files and try again."],
+  waitingUpload:["等待上传", "Waiting to upload"],
+  uploading:    ["正在上传…", "Uploading…"],
+  uploadFailed: ["上传失败", "Upload failed"],
+  queued:       ["已提交，等待处理", "Submitted, waiting"],
+  batchDone:    [n => `已完成 ${n} 个`, n => `${n} completed`],
+  batchFailed:  [n => `失败 ${n} 个`, n => `${n} failed`],
+  batchFiles:   [n => `共 ${n} 个文件；服务器同时处理 2 个，其余自动排队`, n => `${n} files; 2 process at once and the rest queue automatically`],
+  viewResult:   ["查看", "Review"],
+  downloadOne: ["下载", "Download"],
+  backToBatch: ["返回批量列表", "Back to batch"],
   cancelled:    ["已取消：", "Cancelled: "],
   notDone:      ["没有处理：", "Not processed: "],
   ofPages:      [n => `/ 共 ${n} 页已处理`, n => `/ ${n} pages processed`],
@@ -599,6 +661,7 @@ function applyLang(lang){
   $("lang-en").classList.toggle("on", LANG === "en");
   try { localStorage.setItem("unmark_lang", LANG); } catch (e) {}
   redraw();                       // 结果区是 JS 画的，跟着一起换
+  if (batch.length) renderBatch();
 }
 function setLang(lang){ applyLang(lang); }
 
@@ -616,13 +679,13 @@ function redraw(){
 }
 
 function show(step){
-  for (const id of ["step-pick","step-run","step-done"])
+  for (const id of ["step-pick","step-run","step-done","step-batch"])
     $(id).classList.toggle("hide", id !== step);
 }
 
 /* ---------- 选文件 ---------- */
 $("drop").onclick = () => $("file").click();
-$("file").onchange = e => { if (e.target.files[0]) upload(e.target.files[0]); };
+$("file").onchange = e => { if (e.target.files.length) chooseFiles([...e.target.files]); };
 ["dragenter","dragover"].forEach(ev => $("drop").addEventListener(ev, e => {
   e.preventDefault(); $("drop").classList.add("hot");
 }));
@@ -630,12 +693,109 @@ $("file").onchange = e => { if (e.target.files[0]) upload(e.target.files[0]); };
   e.preventDefault(); $("drop").classList.remove("hot");
 }));
 $("drop").addEventListener("drop", e => {
-  const f = e.dataTransfer.files[0];
-  if (f) upload(f);
+  const files = [...e.dataTransfer.files];
+  if (files.length) chooseFiles(files);
 });
+
+function chooseFiles(files){
+  if (files.length === 1) return upload(files[0]);
+  if (files.length > 10) { alert(t("tooMany")); return; }
+  const invalid = files.find(f => !/\.(pdf|pptx)$/i.test(f.name));
+  if (invalid) { alert(t("pickFile")); return; }
+  const oversized = files.find(f => f.size > 100 * 1024 * 1024);
+  if (oversized) { alert(t("tooLarge", oversized.name)); return; }
+  if (files.reduce((sum, f) => sum + f.size, 0) > 300 * 1024 * 1024){
+    alert(t("batchTooLarge")); return;
+  }
+  startBatch(files);
+}
+
+function fileSize(bytes){
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+                              : `${Math.ceil(bytes / 1024)} KB`;
+}
+
+async function startBatch(files){
+  if (poll) clearInterval(poll);
+  batch = files.map(file => ({file,id:null,state:"waiting",status:t("waitingUpload"),progress:0,snapshot:null,error:""}));
+  $("batch-download").disabled = true;
+  show("step-batch"); renderBatch();
+  for (const item of batch){
+    if (item.state === "cancelled") continue;
+    item.state = "uploading"; item.status = t("uploading"); renderBatch();
+    try{
+      const res = await fetch("/api/jobs", {
+        method:"POST",
+        headers:{"content-type":"application/octet-stream","x-filename":encodeURIComponent(item.file.name)},
+        body:item.file
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+      item.id = (await res.json()).id;
+      if (item.state === "cancelled") fetch(`/api/jobs/${item.id}/cancel`, {method:"POST"});
+      else { item.state = "running"; item.status = t("queued"); }
+    }catch(err){ item.state = "failed"; item.status = t("uploadFailed"); item.error = err.message; }
+    renderBatch();
+  }
+  poll = setInterval(tickBatch, 800);
+  tickBatch();
+}
+
+async function tickBatch(){
+  const running = batch.filter(item => item.id && item.state === "running");
+  await Promise.all(running.map(async item => {
+    try{
+      const res = await fetch(`/api/jobs/${item.id}`);
+      if (!res.ok) throw new Error(t("lost"));
+      const s = await res.json(); item.snapshot = s;
+      item.status = stageText(s.stage);
+      item.progress = s.total ? Math.round(100 * s.current / s.total) : 8;
+      if (s.status === "done"){ item.state = "done"; item.progress = 100; }
+      else if (s.status !== "running"){ item.state = "failed"; item.error = s.error || s.stage; }
+    }catch(err){ item.state = "failed"; item.error = err.message; }
+  }));
+  renderBatch();
+  if (!batch.some(item => ["waiting","uploading","running"].includes(item.state))){
+    clearInterval(poll); poll = null;
+  }
+}
+
+function renderBatch(){
+  $("batch-count").textContent = t("batchFiles", batch.length);
+  $("batch-list").innerHTML = batch.map((item, index) => {
+    const status = item.error || item.status;
+    const actions = item.state === "done"
+      ? `<button data-view="${index}">${t("viewResult")}</button><a href="/api/jobs/${item.id}/download">${t("downloadOne")}</a>` : "";
+    return `<div class="batch-item"><div class="batch-file"><span class="batch-name">${esc(item.file.name)}</span>`
+      + `<span class="batch-size">${fileSize(item.file.size)}</span></div><div class="batch-progress">`
+      + `<div class="bar"><i style="width:${item.progress}%"></i></div><span class="batch-status">${esc(status)}</span></div>`
+      + `<div class="batch-actions">${actions}</div></div>`;
+  }).join("");
+  $("batch-list").querySelectorAll("[data-view]").forEach(el => el.onclick = () => {
+    const item = batch[Number(el.dataset.view)];
+    if (item?.snapshot){ job = item.id; viewingBatch = true; succeed(item.snapshot); }
+  });
+  const done = batch.filter(item => item.state === "done").length;
+  const failed = batch.filter(item => ["failed","cancelled"].includes(item.state)).length;
+  $("batch-summary").textContent = `${t("batchDone", done)} · ${t("batchFailed", failed)}`;
+  $("batch-download").disabled = done === 0;
+}
+
+$("batch-cancel").onclick = () => {
+  batch.forEach(item => {
+    if (item.id && item.state === "running") fetch(`/api/jobs/${item.id}/cancel`, {method:"POST"});
+    if (["waiting","uploading","running"].includes(item.state)){ item.state = "cancelled"; item.status = t("cancelled"); }
+  });
+  renderBatch();
+};
+$("batch-download").onclick = () => {
+  const ids = batch.filter(item => item.state === "done").map(item => item.id);
+  if (ids.length) location.href = `/api/batch/download?jobs=${encodeURIComponent(ids.join(","))}`;
+};
+$("batch-again").onclick = () => { batch = []; viewingBatch = false; $("file").value = ""; show("step-pick"); };
 
 async function upload(file){
   if (!/\.(pdf|pptx)$/i.test(file.name)) { alert(t("pickFile")); return; }
+  viewingBatch = false;
   $("run-name").textContent = file.name;
   $("stage").textContent = t("reading");
   $("bar").classList.add("indet");
@@ -700,6 +860,8 @@ function succeed(s, quiet){
   $("banner").className = "banner ok";
   $("banner").textContent = "✅ " + line;
   $("download").classList.remove("hide");
+  $("again").textContent = viewingBatch ? t("backToBatch")
+                                         : $("again").getAttribute("data-" + LANG);
 
   if (objects) return succeedPptx(r, quiet);
   $("compare").classList.remove("hide");
@@ -892,6 +1054,7 @@ $("applypanel").onclick = async () => {
 
 $("download").onclick = () => location.href = `/api/jobs/${job}/download`;
 $("again").onclick = () => {
+  if (viewingBatch){ viewingBatch = false; show("step-batch"); renderBatch(); return; }
   if (job) fetch(`/api/jobs/${job}`, {method:"DELETE"});
   job = null; lastState = null; $("file").value = "";
   history.replaceState(null, "", location.pathname);

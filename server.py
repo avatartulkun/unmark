@@ -19,6 +19,7 @@ import tempfile
 import threading
 import time
 import uuid
+import zipfile
 from collections import deque
 from dataclasses import dataclass, field
 from html import escape
@@ -32,6 +33,7 @@ import fitz
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from PIL import Image
+from starlette.background import BackgroundTask
 
 from unpptx import PptxOptions, clean_pptx
 from unwatermark import CleanOptions, clean_pdf
@@ -566,6 +568,34 @@ def create_app() -> FastAPI:
         return FileResponse(job.destination, media_type=media,
                             filename=job.destination.name,
                             headers={"Cache-Control": "no-transform"})
+
+    @app.get("/api/batch/download")
+    def download_batch(jobs: str = "") -> FileResponse:
+        """把一批已完成结果打成无压缩 ZIP；容器文件本身已压缩，重复压缩只会拖慢下载。"""
+        ids = list(dict.fromkeys(part.strip() for part in jobs.split(",") if part.strip()))
+        if not ids or len(ids) > 10:
+            raise HTTPException(status_code=400, detail="批量下载需要 1 到 10 个任务")
+        selected = [_get_job(job_id) for job_id in ids]
+        if any(job.status != "done" or not job.destination.exists() for job in selected):
+            raise HTTPException(status_code=409, detail="批量任务中有文件尚未成功完成")
+
+        fd, archive_name = tempfile.mkstemp(prefix="unmark_batch_", suffix=".zip")
+        os.close(fd)
+        used: set[str] = set()
+        with zipfile.ZipFile(archive_name, "w", compression=zipfile.ZIP_STORED) as archive:
+            for index, job in enumerate(selected, 1):
+                name = job.destination.name
+                if name in used:
+                    name = f"{Path(name).stem}_{index}{Path(name).suffix}"
+                used.add(name)
+                archive.write(job.destination, arcname=name)
+        return FileResponse(
+            archive_name,
+            media_type="application/zip",
+            filename="unmark_批量处理结果.zip",
+            headers={"Cache-Control": "no-transform"},
+            background=BackgroundTask(os.unlink, archive_name),
+        )
 
     @app.delete("/api/jobs/{job_id}")
     def drop(job_id: str) -> JSONResponse:
