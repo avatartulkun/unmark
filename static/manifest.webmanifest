@@ -1,0 +1,16 @@
+{
+  "name": "unmark · NotebookLM 去水印",
+  "short_name": "unmark",
+  "description": "批量清理 NotebookLM 导出的 PDF / PPTX 水印，并可添加自己的 Logo 或文字。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f6f8",
+  "theme_color": "#171f50",
+  "lang": "zh-CN",
+  "icons": [
+    {"src": "/assets/app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/assets/app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/assets/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}
+  ]
+}

@@ -423,6 +423,31 @@ def create_app() -> FastAPI:
     def index() -> HTMLResponse:
         return HTMLResponse(_render_index())
 
+    @app.get("/manifest.webmanifest", response_class=FileResponse)
+    def web_manifest() -> FileResponse:
+        return FileResponse(STATIC_DIR / "manifest.webmanifest",
+                            media_type="application/manifest+json")
+
+    @app.get("/service-worker.js", response_class=FileResponse)
+    def service_worker() -> FileResponse:
+        return FileResponse(STATIC_DIR / "service-worker.js", media_type="text/javascript",
+                            headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+    @app.get("/assets/app-icon.svg", response_class=FileResponse)
+    def app_icon() -> FileResponse:
+        return FileResponse(STATIC_DIR / "assets" / "app-icon.svg", media_type="image/svg+xml",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/assets/app-icon-192.png", response_class=FileResponse)
+    def app_icon_192() -> FileResponse:
+        return FileResponse(STATIC_DIR / "assets" / "app-icon-192.png", media_type="image/png",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/assets/app-icon-512.png", response_class=FileResponse)
+    def app_icon_512() -> FileResponse:
+        return FileResponse(STATIC_DIR / "assets" / "app-icon-512.png", media_type="image/png",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/assets/wechat-qr.png", response_class=FileResponse)
     def wechat_qr() -> FileResponse:
         """公众号二维码是页面自身资源；使用固定路径，不开放任意静态文件读取。"""

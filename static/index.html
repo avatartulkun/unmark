@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>unmark — NotebookLM 去水印</title>
 <meta name="description" content="去掉 NotebookLM 导出的 PDF / PPTX 右下角那个固定角标。只动水印那一小块，原件不改动。">
+<meta name="theme-color" content="#171f50">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="unmark">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/app-icon-192.png">
 <style>
   :root{
     --primary:#4F46E5; --primary-dark:#3730A3; --primary-soft:#EEF2FF;
@@ -35,6 +42,9 @@
   .langs button{border:0;background:transparent;color:rgba(255,255,255,.58);
                 font:600 12px/1 inherit;padding:7px 12px;border-radius:7px;cursor:pointer}
   .langs button.on{background:rgba(255,255,255,.14);color:#fff}
+  .install-app{padding:8px 11px;border-color:rgba(255,255,255,.24);background:rgba(255,255,255,.1);
+               color:#fff;font-size:12px;font-weight:700;white-space:nowrap}
+  .install-app:hover:not(:disabled){background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.4)}
 
   /* 顶部 */
   header{position:relative;overflow:hidden;
@@ -316,7 +326,7 @@
     .wechat{grid-template-columns:1fr;text-align:center}
     .wechat-copy .wechat-name{justify-content:center}
     .wechat-qr{margin:0 auto}
-    .decorate-grid{grid-template-columns:1fr 1fr}.decorate-grid .field:first-child{grid-column:1/-1}
+    .decorate-grid{grid-template-columns:1fr}.decorate-grid .field:first-child{grid-column:auto}
     .deco-stage>img{width:100%;max-height:none}.hero-advantage{align-items:flex-start;padding:13px 14px}
     .support-shell{padding:20px}
     .info-steps{grid-template-columns:1fr}.info-modal .support-shell{padding:20px}
@@ -345,6 +355,7 @@
           <button class="info-nav open-info" data-dialog="privacy-dialog" data-zh="隐私与安全" data-en="Privacy">隐私与安全</button>
           <a href="https://github.com/tinyproductlab/unmark" target="_blank" rel="noopener">GitHub</a>
         </nav>
+        <button class="install-app hide" id="install-app" aria-label="Install unmark" data-zh="安装" data-en="Install">安装</button>
         <div class="langs">
           <button id="lang-zh" onclick="setLang('zh')" class="on">中文</button>
           <button id="lang-en" onclick="setLang('en')">EN</button>
@@ -653,6 +664,22 @@
       <div class="trust-strip">
         <span data-zh="原件不改写" data-en="Original untouched">原件不改写</span><span data-zh="输出为新文件" data-en="New output file">输出为新文件</span><span data-zh="处理结果复核" data-en="Output verified">处理结果复核</span><span data-zh="开源 · MIT" data-en="Open source · MIT">开源 · MIT</span>
       </div>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="support-modal info-modal" id="install-dialog" aria-labelledby="install-title">
+  <div class="support-shell">
+    <div class="support-head"><div><p class="section-kicker" data-zh="手机桌面版" data-en="Mobile web app">手机桌面版</p>
+      <h2 id="install-title" data-zh="把 unmark 安装到手机" data-en="Install unmark on your phone">把 unmark 安装到手机</h2>
+      <p data-zh="安装后可从桌面直接打开，使用体验更接近普通 App。" data-en="Open unmark directly from your home screen, like a regular app.">安装后可从桌面直接打开，使用体验更接近普通 App。</p></div>
+      <button class="support-close close-install" aria-label="Close">×</button></div>
+    <div class="info-body">
+      <h3 data-zh="iPhone / iPad" data-en="iPhone / iPad">iPhone / iPad</h3>
+      <p data-zh="请使用 Safari 打开本页，点击底部的“分享”按钮，再选择“添加到主屏幕”。" data-en="Open this page in Safari, tap Share, then choose Add to Home Screen.">请使用 Safari 打开本页，点击底部的“分享”按钮，再选择“添加到主屏幕”。</p>
+      <h3 data-zh="Android" data-en="Android">Android</h3>
+      <p data-zh="使用 Chrome 打开本页，点击浏览器菜单中的“安装应用”或“添加到主屏幕”。" data-en="Open this page in Chrome, then choose Install app or Add to Home screen from the browser menu.">使用 Chrome 打开本页，点击浏览器菜单中的“安装应用”或“添加到主屏幕”。</p>
+      <p class="note" data-zh="安装的是网页应用，不会读取手机中的其他文件。上传和去水印处理仍需要联网。" data-en="This installs a web app and does not read other files on your phone. Uploading and processing still require an internet connection.">安装的是网页应用，不会读取手机中的其他文件。上传和去水印处理仍需要联网。</p>
     </div>
   </div>
 </dialog>
@@ -1282,6 +1309,27 @@ document.querySelectorAll(".close-info").forEach(button => {
 document.querySelectorAll(".info-modal").forEach(dialog => {
   dialog.onclick = event => { if (event.target === dialog) dialog.close(); };
 });
+
+/* ---------- 安装到手机 / PWA ---------- */
+let installPrompt = null;
+const installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const mobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+if (!installed && mobileDevice) $("install-app").classList.remove("hide");
+window.addEventListener("beforeinstallprompt", event => {
+  event.preventDefault(); installPrompt = event; $("install-app").classList.remove("hide");
+});
+$("install-app").onclick = async () => {
+  if (installPrompt){
+    installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null;
+    $("install-app").classList.add("hide");
+  }else $("install-dialog").showModal();
+};
+document.querySelector(".close-install").onclick = () => $("install-dialog").close();
+$("install-dialog").onclick = event => { if (event.target === $("install-dialog")) $("install-dialog").close(); };
+window.addEventListener("appinstalled", () => $("install-app").classList.add("hide"));
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/service-worker.js"));
+}
 
 $("again").onclick = () => {
   if (viewingBatch){ viewingBatch = false; show("step-batch"); renderBatch(); return; }
