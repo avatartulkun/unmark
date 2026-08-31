@@ -35,11 +35,6 @@
   .langs button{border:0;background:transparent;color:rgba(255,255,255,.58);
                 font:600 12px/1 inherit;padding:7px 12px;border-radius:7px;cursor:pointer}
   .langs button.on{background:rgba(255,255,255,.14);color:#fff}
-  .support-nav{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid rgba(255,255,255,.35);
-                  border-radius:10px;background:#FF4D6D;color:#fff;font-size:12.5px;font-weight:750;
-                  box-shadow:0 8px 24px rgba(201,33,73,.3)}
-  .support-nav::before{content:"♥";font-size:13px}
-  .support-nav:hover:not(:disabled){background:#E83E5E;border-color:#fff;transform:translateY(-1px)}
 
   /* 顶部 */
   header{position:relative;overflow:hidden;
@@ -238,11 +233,6 @@
   .contact-email:hover{text-decoration:underline}
   .wechat-qr{width:132px;height:132px;padding:7px;border:1px solid var(--line);
              border-radius:12px;background:#fff;box-shadow:0 5px 18px rgba(20,20,35,.07)}
-  .support-link{display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;
-                color:var(--primary);padding:4px 0;font-size:12.5px;font-weight:650;box-shadow:none}
-  .support-link::before{content:"♥";display:grid;place-items:center;width:20px;height:20px;
-                        border-radius:6px;background:#FFF0F3;color:#E54868;font-size:11px}
-  .support-link:hover:not(:disabled){color:var(--primary-dark);border-color:transparent}
   dialog.support-modal{width:min(720px,calc(100% - 32px));max-height:calc(100vh - 32px);padding:0;
                        border:1px solid var(--line);border-radius:18px;background:#fff;color:var(--ink);
                        box-shadow:0 24px 80px rgba(12,18,40,.25);overflow:auto}
@@ -250,22 +240,6 @@
   .support-shell{padding:26px}.support-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
   .support-head h2{margin:0 0 4px;font-size:19px}.support-head p{margin:0;color:var(--ink-soft);font-size:13px}
   .support-close{width:34px;height:34px;padding:0;border-radius:9px;font-size:18px;line-height:1}
-  .support-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
-  .support-method{padding:15px;border:1px solid var(--line);border-radius:13px;background:#FAFAFB;text-align:center}
-  .support-method h3{margin:0 0 10px;font-size:13px}.support-method img{display:block;width:100%;height:auto;
-                      aspect-ratio:1;object-fit:contain;border-radius:10px;background:#fff}
-  .support-crypto{grid-column:1/-1;text-align:left;background:#F7F8FF}
-  .support-crypto-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
-  .support-crypto-head h3{margin:0}.network-badge{padding:3px 8px;border-radius:999px;background:#E9F8F0;
-                                                  color:#087A49;font-size:10.5px;font-weight:750}
-  .crypto-body{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;align-items:center}
-  .crypto-qr{display:block;width:150px;height:150px;border-radius:10px;background:#fff}
-  .wallet-row{display:flex;align-items:center;gap:9px}.wallet-address{min-width:0;flex:1;padding:9px 10px;
-              border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);
-              font:11.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
-  .copy-wallet{flex:0 0 auto;padding:9px 12px;color:var(--primary);font-size:11.5px;font-weight:700}
-  .crypto-warning{display:block;margin-top:8px;color:var(--err);font-size:10.5px}
-  .support-note{margin:16px 0 0;color:var(--ink-soft);font-size:11.5px;text-align:center}
   .info-modal{width:min(680px,calc(100% - 32px))}
   .info-modal .support-shell{padding:28px}.info-modal .support-head{padding-bottom:17px;border-bottom:1px solid var(--line)}
   .info-body{padding-top:18px}.info-body h3{margin:18px 0 5px;font-size:14px}.info-body p{margin:0 0 10px;color:var(--ink-soft)}
@@ -316,7 +290,6 @@
     .top-actions{gap:8px}
     .topnav{gap:8px}
     .topnav a,.info-nav{display:none}
-    .support-nav{padding:8px 11px}
     .langs button{padding:7px 9px}
     header .tag{display:none}
     header h1{font-size:34px}
@@ -340,9 +313,8 @@
     .wechat-qr{margin:0 auto}
     .decorate-grid{grid-template-columns:1fr 1fr}.decorate-grid .field:first-child{grid-column:1/-1}
     .deco-stage>img{width:100%;max-height:none}.enhance-intro{align-items:flex-start}
-    .support-grid{grid-template-columns:1fr}.support-shell{padding:20px}
+    .support-shell{padding:20px}
     .info-steps{grid-template-columns:1fr}.info-modal .support-shell{padding:20px}
-    .crypto-body{grid-template-columns:1fr}.crypto-qr{width:min(210px,100%);height:auto;margin:0 auto}
     .domain-memory{padding:15px}.domain-name{font-size:15px}.domain-words{font-size:11px}.domain-words strong{font-size:12px}
   }
   @media (prefers-reduced-motion:reduce){
@@ -367,7 +339,6 @@
           <button class="info-nav open-info" data-dialog="how-dialog" data-zh="使用方法" data-en="How it works">使用方法</button>
           <button class="info-nav open-info" data-dialog="privacy-dialog" data-zh="隐私与安全" data-en="Privacy">隐私与安全</button>
           <a href="https://github.com/tinyproductlab/unmark" target="_blank" rel="noopener">GitHub</a>
-          <button class="support-nav open-support" data-zh="支持项目" data-en="Support">支持项目</button>
         </nav>
         <div class="langs">
           <button id="lang-zh" onclick="setLang('zh')" class="on">中文</button>
@@ -532,7 +503,6 @@
 
     <div class="row" style="margin-top:20px">
       <button class="primary" id="download" data-zh="下载去水印后的文件" data-en="Download the cleaned file">下载去水印后的文件</button>
-      <button class="support-link open-support" data-zh="支持这个项目" data-en="Support this project">支持这个项目</button>
       <button id="again" data-zh="换一个文件" data-en="Use another file">换一个文件</button>
     </div>
   </div>
@@ -681,28 +651,6 @@
         <span data-zh="原件不改写" data-en="Original untouched">原件不改写</span><span data-zh="输出为新文件" data-en="New output file">输出为新文件</span><span data-zh="处理结果复核" data-en="Output verified">处理结果复核</span><span data-zh="开源 · MIT" data-en="Open source · MIT">开源 · MIT</span>
       </div>
     </div>
-  </div>
-</dialog>
-
-<dialog class="support-modal" id="support-dialog" aria-labelledby="support-title">
-  <div class="support-shell">
-    <div class="support-head"><div><h2 id="support-title" data-zh="支持这个项目" data-en="Support this project">支持这个项目</h2>
-      <p data-zh="如果 unmark 帮到了你，可以自愿支持项目维护与服务器费用。" data-en="If unmark helped you, you can voluntarily support maintenance and server costs.">如果 unmark 帮到了你，可以自愿支持项目维护与服务器费用。</p></div>
-      <button class="support-close" id="support-close" aria-label="Close">×</button></div>
-    <div class="support-grid">
-      <div class="support-method"><h3 data-zh="微信支付" data-en="WeChat Pay">微信支付</h3><img src="/assets/support-wechat.png?v=3" data-zh-alt="微信支持二维码" data-en-alt="WeChat support QR code" alt="微信支持二维码"></div>
-      <div class="support-method"><h3 data-zh="支付宝" data-en="Alipay">支付宝</h3><img src="/assets/support-alipay.png?v=3" data-zh-alt="支付宝支持二维码" data-en-alt="Alipay support QR code" alt="支付宝支持二维码"></div>
-      <div class="support-method support-crypto">
-        <div class="support-crypto-head"><h3 data-zh="USDC 加密货币" data-en="USDC crypto">USDC 加密货币</h3><span class="network-badge">TRON (TRC20)</span></div>
-        <div class="crypto-body">
-          <img class="crypto-qr" src="/assets/support-binance-usdc-tron.png?v=1" data-zh-alt="USDC TRON 钱包地址二维码" data-en-alt="USDC TRON wallet address QR code" alt="USDC TRON 钱包地址二维码">
-          <div><div class="wallet-row"><code class="wallet-address" id="crypto-address">TSAdZm2yNMZCpmd8ussPgrg7pnNYdv9eph</code>
-            <button class="copy-wallet" id="copy-wallet" data-zh="复制地址" data-en="Copy address">复制地址</button></div>
-          <span class="crypto-warning" data-zh="可使用币安扫描此地址二维码。仅接收 TRON 网络上的 USDC；使用其他币种或网络可能造成资产永久丢失。" data-en="Scan this address QR code with Binance. USDC on TRON only; other assets or networks may be permanently lost.">可使用币安扫描此地址二维码。仅接收 TRON 网络上的 USDC；使用其他币种或网络可能造成资产永久丢失。</span></div>
-        </div>
-      </div>
-    </div>
-    <p class="support-note" data-zh="完全自愿，不影响任何功能。请在付款前核对收款人信息。" data-en="Entirely optional and never affects any feature. Verify the recipient before paying.">完全自愿，不影响任何功能。请在付款前核对收款人信息。</p>
   </div>
 </dialog>
 
@@ -1332,24 +1280,6 @@ document.querySelectorAll(".info-modal").forEach(dialog => {
   dialog.onclick = event => { if (event.target === dialog) dialog.close(); };
 });
 
-/* ---------- 支持项目 ---------- */
-document.querySelectorAll(".open-support").forEach(button => {
-  button.onclick = () => $("support-dialog").showModal();
-});
-$("support-close").onclick = () => $("support-dialog").close();
-$("support-dialog").onclick = event => {
-  if (event.target === $("support-dialog")) $("support-dialog").close();
-};
-$("copy-wallet").onclick = async () => {
-  const button = $("copy-wallet"), address = $("crypto-address").textContent;
-  try {
-    await navigator.clipboard.writeText(address);
-    button.textContent = LANG === "en" ? "Copied" : "已复制";
-    setTimeout(() => button.textContent = button.getAttribute("data-" + LANG), 1600);
-  } catch (err) {
-    button.textContent = LANG === "en" ? "Copy failed" : "复制失败";
-  }
-};
 $("again").onclick = () => {
   if (viewingBatch){ viewingBatch = false; show("step-batch"); renderBatch(); return; }
   if (job) fetch(`/api/jobs/${job}`, {method:"DELETE"});
