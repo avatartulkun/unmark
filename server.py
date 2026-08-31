@@ -37,7 +37,7 @@ from starlette.background import BackgroundTask
 
 from unpptx import PptxOptions, clean_pptx
 from unwatermark import CleanOptions, clean_pdf
-from decorate_pdf import POSITIONS, add_logo, add_text
+from decorate_pdf import FONTS, POSITIONS, add_logo, add_text
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -528,18 +528,31 @@ def create_app() -> FastAPI:
         box_ratio = (job.result or {}).get("box_ratio") if zoom else None
         return _png(image, box_ratio)
 
-    def _decoration_options(request: Request) -> tuple[str, float, float]:
+    def _decoration_options(request: Request) -> tuple[str, float, float, float | None, float | None]:
         position = request.query_params.get("position", "bottom-right")
         if position not in POSITIONS:
             raise HTTPException(status_code=400, detail="位置参数无效")
         try:
             opacity = float(request.query_params.get("opacity", ".8"))
             margin = float(request.query_params.get("margin", ".03"))
+            x_raw, y_raw = request.query_params.get("x"), request.query_params.get("y")
+            x = float(x_raw) if x_raw is not None else None
+            y = float(y_raw) if y_raw is not None else None
         except ValueError:
             raise HTTPException(status_code=400, detail="透明度或边距参数无效")
         if not .1 <= opacity <= 1 or not 0 <= margin <= .15:
             raise HTTPException(status_code=400, detail="透明度或边距超出范围")
-        return position, opacity, margin
+        if (x is None) != (y is None) or (x is not None and not (0 <= x <= 1 and 0 <= y <= 1)):
+            raise HTTPException(status_code=400, detail="拖动位置参数无效")
+        return position, opacity, margin, x, y
+
+    def _hex_color(value: str, *, optional: bool = False) -> tuple[float, float, float] | None:
+        if optional and value in {"", "none", "transparent"}:
+            return None
+        value = value.lstrip("#")
+        if len(value) != 6 or any(char not in "0123456789abcdefABCDEF" for char in value):
+            raise HTTPException(status_code=400, detail="颜色参数无效")
+        return tuple(int(value[index:index + 2], 16) / 255 for index in (0, 2, 4))
 
     def _ready_pdf(job_id: str) -> Job:
         job = _get_job(job_id)
@@ -552,7 +565,7 @@ def create_app() -> FastAPI:
     @app.post("/api/jobs/{job_id}/decorate/logo")
     async def decorate_logo(job_id: str, request: Request) -> JSONResponse:
         job = _ready_pdf(job_id)
-        position, opacity, margin = _decoration_options(request)
+        position, opacity, margin, x, y = _decoration_options(request)
         try:
             width = float(request.query_params.get("width", ".16"))
         except ValueError:
@@ -565,7 +578,8 @@ def create_app() -> FastAPI:
         output = job.directory / f"{job.destination.stem}_加Logo.pdf"
         try:
             add_logo(job.destination, output, payload, position=position,
-                     width_ratio=width, opacity=opacity, margin_ratio=margin)
+                     width_ratio=width, opacity=opacity, margin_ratio=margin,
+                     x_ratio=x, y_ratio=y)
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail=f"Logo 图片无法使用：{exc}")
         job.decorated = output
@@ -574,13 +588,18 @@ def create_app() -> FastAPI:
     @app.post("/api/jobs/{job_id}/decorate/text")
     async def decorate_text(job_id: str, request: Request) -> JSONResponse:
         job = _ready_pdf(job_id)
-        position, opacity, margin = _decoration_options(request)
+        position, opacity, margin, x, y = _decoration_options(request)
         try:
             size = float(request.query_params.get("size", ".035"))
         except ValueError:
             raise HTTPException(status_code=400, detail="文字大小参数无效")
         if not .015 <= size <= .1:
             raise HTTPException(status_code=400, detail="文字大小超出范围")
+        font = request.query_params.get("font", "cjk")
+        if font not in FONTS:
+            raise HTTPException(status_code=400, detail="字体参数无效")
+        color = _hex_color(request.query_params.get("color", "#1f2937"))
+        background = _hex_color(request.query_params.get("background", "none"), optional=True)
         try:
             raw = await _read_small_body(request, 8 * 1024, "文字内容")
             body = json.loads(raw or b"{}")
@@ -592,7 +611,9 @@ def create_app() -> FastAPI:
         output = job.directory / f"{job.destination.stem}_加文字.pdf"
         try:
             add_text(job.destination, output, text, position=position,
-                     size_ratio=size, opacity=opacity, margin_ratio=margin)
+                     size_ratio=size, opacity=opacity, margin_ratio=margin,
+                     x_ratio=x, y_ratio=y, font=font, color=color,
+                     background=background)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         job.decorated = output

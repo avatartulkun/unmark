@@ -83,6 +83,11 @@
   .upload-rules{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:14px}
   .upload-rules span{padding:4px 8px;border:1px solid var(--line);border-radius:999px;
                      background:#fff;color:var(--ink-soft);font-size:11px}
+  .enhance-intro{display:flex;align-items:center;gap:14px;margin-top:14px;padding:13px 15px;
+                 border:1px solid #D9D7FF;border-radius:12px;background:#F8F8FF;text-align:left}
+  .enhance-intro-icon{display:grid;place-items:center;flex:0 0 38px;height:38px;border-radius:11px;
+                      background:var(--primary);color:#fff;font-size:19px}
+  .enhance-intro strong{display:block;font-size:13px}.enhance-intro span:last-child{display:block;color:var(--ink-soft);font-size:11.5px}
 
   button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#fff;
          color:var(--ink);padding:10px 17px;cursor:pointer;
@@ -158,10 +163,23 @@
   .decorate-badge{white-space:nowrap;padding:4px 8px;border-radius:999px;background:#E9E7FF;color:var(--primary-dark);font-size:10.5px;font-weight:700}
   .decorate-tabs{display:flex;gap:6px;margin-bottom:13px}
   .decorate-tabs button{padding:7px 12px;font-size:12px}.decorate-tabs button.on{border-color:var(--primary);color:var(--primary);background:#fff}
-  .decorate-grid{display:grid;grid-template-columns:1.4fr repeat(3,minmax(100px,.7fr));gap:10px;align-items:end}
+  .decorate-grid{display:grid;grid-template-columns:1.5fr repeat(3,minmax(110px,.7fr));gap:10px;align-items:end}
   .field{display:grid;gap:5px;color:var(--ink-soft);font-size:11px}
   .field input,.field select{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px;font:inherit;color:var(--ink)}
   .field input[type=range]{padding:5px 0;border:0;background:transparent}
+  .field input[type=color]{height:38px;padding:4px;cursor:pointer}
+  .text-options{display:contents}
+  .background-choice{display:flex;align-items:center;gap:7px;height:38px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .background-choice input[type=color]{flex:1;height:28px;border:0;padding:0}.background-choice input[type=checkbox]{width:auto}
+  .deco-editor{margin-top:14px;padding:14px;border:1px solid #E3E1FF;border-radius:11px;background:#fff}
+  .deco-editor-note{margin:0 0 10px;color:var(--ink-soft);font-size:12px}
+  .deco-stage{position:relative;display:inline-block;max-width:100%;line-height:0;overflow:hidden;
+              border:1px solid var(--line);border-radius:9px;background:#F3F4F6;touch-action:none}
+  .deco-stage>img{display:block;max-width:100%;max-height:560px;width:auto;height:auto}
+  .deco-overlay{position:absolute;left:70%;top:25%;transform:translate(-50%,-50%);cursor:grab;
+                user-select:none;touch-action:none;line-height:1.2;max-width:90%}
+  .deco-overlay:active{cursor:grabbing}.deco-overlay.logo{width:16%}.deco-overlay.logo img{display:block;width:100%;height:auto;pointer-events:none}
+  .deco-overlay.text{white-space:nowrap;padding:.3em .45em;font-weight:600;text-align:center}.deco-overlay-text{pointer-events:none}
   .decorate-actions{margin-top:13px}.decorate-preview{margin-top:14px;padding-top:14px;border-top:1px solid #E3E1FF}
   .decorate-preview img{display:block;width:100%;max-height:520px;object-fit:contain;border:1px solid var(--line);border-radius:9px;background:#fff}
   .nav{display:flex;justify-content:center;gap:8px;align-items:center;margin-top:18px}
@@ -314,6 +332,7 @@
     .wechat-copy .wechat-name{justify-content:center}
     .wechat-qr{margin:0 auto}
     .decorate-grid{grid-template-columns:1fr 1fr}.decorate-grid .field:first-child{grid-column:1/-1}
+    .deco-stage>img{width:100%;max-height:none}.enhance-intro{align-items:flex-start}
     .support-grid{grid-template-columns:1fr}.support-shell{padding:20px}
     .crypto-body{grid-template-columns:1fr}.crypto-qr{width:min(210px,100%);height:auto;margin:0 auto}
     .domain-memory{padding:15px}.domain-name{font-size:15px}.domain-words{font-size:11px}.domain-words strong{font-size:12px}
@@ -356,6 +375,7 @@
       <span data-zh="PDF 与 PPTX" data-en="PDF and PPTX">PDF 与 PPTX</span>
       <span data-zh="原件不会被改动" data-en="Your original stays untouched">原件不会被改动</span>
       <span data-zh="只动水印那一小块" data-en="Only the badge is touched">只动水印那一小块</span>
+      <span data-zh="清理后可添加 Logo 或文字" data-en="Add a logo or text afterwards">清理后可添加 Logo 或文字</span>
     </div>
   </div>
 </header>
@@ -377,6 +397,11 @@
       </div>
     </div>
     <input type="file" id="file" accept="application/pdf,.pdf,.pptx" multiple class="hide">
+    <div class="enhance-intro">
+      <span class="enhance-intro-icon">✦</span>
+      <div><strong data-zh="不仅能去水印，还能添加自己的标识" data-en="Remove the badge, then add your own mark">不仅能去水印，还能添加自己的标识</strong>
+        <span data-zh="PDF 清理完成后，可添加 Logo 或自定义文字，自由拖到页面任意位置，再导出增强版。" data-en="After cleaning a PDF, add a logo or custom text, drag it anywhere on the page, and export an enhanced copy.">PDF 清理完成后，可添加 Logo 或自定义文字，自由拖到页面任意位置，再导出增强版。</span></div>
+    </div>
   </div>
 
   <!-- 批量任务 -->
@@ -481,9 +506,17 @@
       <div class="decorate-grid">
         <label class="field" id="deco-logo-field"><span data-zh="Logo 图片（PNG / JPG / WebP，≤ 5 MB）" data-en="Logo image (PNG / JPG / WebP, ≤ 5 MB)">Logo 图片（PNG / JPG / WebP，≤ 5 MB）</span><input id="deco-logo" type="file" accept="image/png,image/jpeg,image/webp"></label>
         <label class="field hide" id="deco-text-field"><span data-zh="文字内容（最多 120 字）" data-en="Text (up to 120 characters)">文字内容（最多 120 字）</span><input id="deco-text" maxlength="120" data-zh-placeholder="例如：小产品实验室" data-en-placeholder="e.g. Tiny Lab"></label>
-        <label class="field"><span data-zh="位置" data-en="Position">位置</span><select id="deco-position"><option value="bottom-right" data-zh="右下角" data-en="Bottom right">右下角</option><option value="bottom-left" data-zh="左下角" data-en="Bottom left">左下角</option><option value="top-right" data-zh="右上角" data-en="Top right">右上角</option><option value="top-left" data-zh="左上角" data-en="Top left">左上角</option><option value="center" data-zh="居中" data-en="Center">居中</option></select></label>
         <label class="field"><span data-zh="大小" data-en="Size">大小</span><input id="deco-size" type="range" min="5" max="40" value="16"></label>
         <label class="field"><span data-zh="透明度" data-en="Opacity">透明度</span><input id="deco-opacity" type="range" min="10" max="100" value="80"></label>
+        <div class="text-options hide" id="deco-text-options">
+          <label class="field"><span data-zh="字体" data-en="Font">字体</span><select id="deco-font"><option value="cjk" data-zh="中文字体" data-en="CJK compatible">中文字体</option><option value="sans" data-zh="无衬线" data-en="Sans serif">无衬线</option><option value="serif" data-zh="衬线" data-en="Serif">衬线</option><option value="mono" data-zh="等宽" data-en="Monospace">等宽</option></select></label>
+          <label class="field"><span data-zh="文字颜色" data-en="Text color">文字颜色</span><input id="deco-color" type="color" value="#1f2937"></label>
+          <label class="field"><span data-zh="底色" data-en="Background">底色</span><span class="background-choice"><input id="deco-background" type="color" value="#ffffff"><label><input id="deco-no-background" type="checkbox" checked><span data-zh="无" data-en="None">无</span></label></span></label>
+        </div>
+      </div>
+      <div class="deco-editor">
+        <p class="deco-editor-note" data-zh="先选择 Logo 或输入文字，然后直接拖动页面上的标识；拖到哪里，全部页面就导出到哪里。" data-en="Choose a logo or enter text, then drag the mark directly on the page. The same position is used on every page.">先选择 Logo 或输入文字，然后直接拖动页面上的标识；拖到哪里，全部页面就导出到哪里。</p>
+        <div class="deco-stage" id="deco-stage"><img id="deco-stage-image" alt=""><div class="deco-overlay logo" id="deco-overlay"><img id="deco-overlay-image" alt=""><span class="deco-overlay-text hide" id="deco-overlay-text"></span></div></div>
       </div>
       <div class="row decorate-actions"><button class="primary" id="deco-create" data-zh="生成并预览" data-en="Generate preview">生成并预览</button><span class="stage" id="deco-status"></span></div>
       <div class="decorate-preview hide" id="deco-preview"><img id="deco-image" alt=""><div class="row" style="margin-top:12px"><button class="primary" id="deco-download" data-zh="下载增强版 PDF" data-en="Download enhanced PDF">下载增强版 PDF</button><span class="stage" data-zh="干净版本仍可用下方按钮单独下载" data-en="The clean version remains available below">干净版本仍可用下方按钮单独下载</span></div></div>
@@ -1074,6 +1107,7 @@ function render(){
   loadSelector(`${b}&side=after&zoom=1`);
   $("full-before").src = `${b}&side=before`;
   $("full-after").src  = `${b}&side=after`;
+  updateDecoStage();
   $("pageno").value = page;
   $("prev").disabled = page <= 1;
   $("next").disabled = page >= pageCount;
@@ -1181,25 +1215,92 @@ $("download").onclick = () => location.href = `/api/jobs/${job}/download`;
 
 /* ---------- 导出增强：Logo / 自定义文字 ---------- */
 let decoMode = "logo";
+let decoX = .7, decoY = .25, decoObjectUrl = null, decoDragging = null;
+
+function updateDecoStage(){
+  if (!job) return;
+  $("deco-stage-image").src = `/api/jobs/${job}/preview?page=${page}&side=after&t=${Date.now()}`;
+}
+
+function decoFontFamily(){
+  return {cjk:'"PingFang SC","Microsoft YaHei",sans-serif', sans:'Arial,sans-serif',
+          serif:'Georgia,serif', mono:'ui-monospace,monospace'}[$("deco-font").value];
+}
+
+function updateDecoOverlay(){
+  const overlay = $("deco-overlay");
+  overlay.style.left = (decoX * 100) + "%";
+  overlay.style.top = (decoY * 100) + "%";
+  overlay.style.opacity = Number($("deco-opacity").value) / 100;
+  overlay.className = `deco-overlay ${decoMode}`;
+  if (decoMode === "logo"){
+    $("deco-overlay-image").classList.remove("hide"); $("deco-overlay-text").classList.add("hide");
+    overlay.style.width = $("deco-size").value + "%";
+    overlay.style.fontSize = ""; overlay.style.color = ""; overlay.style.background = "";
+    overlay.classList.toggle("hide", !$("deco-logo").files[0]);
+  }else{
+    overlay.classList.remove("hide"); overlay.style.width = "auto";
+    $("deco-overlay-image").classList.add("hide"); $("deco-overlay-text").classList.remove("hide");
+    $("deco-overlay-text").textContent = $("deco-text").value.trim() || (LANG === "en" ? "Your text" : "你的文字");
+    overlay.style.fontSize = `clamp(10px,${$("deco-size").value * .72}vw,${$("deco-size").value * 4}px)`;
+    overlay.style.fontFamily = decoFontFamily();
+    overlay.style.color = $("deco-color").value;
+    overlay.style.background = $("deco-no-background").checked ? "transparent" : $("deco-background").value;
+  }
+}
+
 function setDecoMode(mode){
   decoMode = mode;
   $("deco-tab-logo").classList.toggle("on", mode === "logo");
   $("deco-tab-text").classList.toggle("on", mode === "text");
   $("deco-logo-field").classList.toggle("hide", mode !== "logo");
   $("deco-text-field").classList.toggle("hide", mode !== "text");
+  $("deco-text-options").classList.toggle("hide", mode !== "text");
   $("deco-size").min = mode === "logo" ? 5 : 2;
   $("deco-size").max = mode === "logo" ? 40 : 10;
   $("deco-size").value = mode === "logo" ? 16 : 4;
   $("deco-preview").classList.add("hide");
   $("deco-status").textContent = "";
+  updateDecoOverlay();
 }
 $("deco-tab-logo").onclick = () => setDecoMode("logo");
 $("deco-tab-text").onclick = () => setDecoMode("text");
+$("deco-logo").onchange = () => {
+  if (decoObjectUrl) URL.revokeObjectURL(decoObjectUrl);
+  const file = $("deco-logo").files[0];
+  if (file){ decoObjectUrl = URL.createObjectURL(file); $("deco-overlay-image").src = decoObjectUrl; }
+  updateDecoOverlay();
+};
+["deco-text","deco-size","deco-opacity","deco-font","deco-color","deco-background","deco-no-background"].forEach(id => {
+  $(id).addEventListener("input", updateDecoOverlay);
+  $(id).addEventListener("change", updateDecoOverlay);
+});
+
+function moveDecoOverlay(event){
+  const stage = $("deco-stage").getBoundingClientRect();
+  decoX = Math.max(0, Math.min(1, (event.clientX - stage.left) / stage.width));
+  decoY = Math.max(0, Math.min(1, (event.clientY - stage.top) / stage.height));
+  updateDecoOverlay();
+}
+$("deco-overlay").addEventListener("pointerdown", event => {
+  event.preventDefault(); decoDragging = event.pointerId;
+  $("deco-overlay").setPointerCapture(event.pointerId); moveDecoOverlay(event);
+});
+$("deco-overlay").addEventListener("pointermove", event => {
+  if (decoDragging === event.pointerId) moveDecoOverlay(event);
+});
+$("deco-overlay").addEventListener("pointerup", event => { decoDragging = null; });
 $("deco-create").onclick = async () => {
-  const position = $("deco-position").value;
   const opacity = Number($("deco-opacity").value) / 100;
   const size = Number($("deco-size").value) / 100;
-  let url = `/api/jobs/${job}/decorate/${decoMode}?position=${position}&opacity=${opacity}&margin=.03&${decoMode === "logo" ? "width" : "size"}=${size}`;
+  const params = new URLSearchParams({position:"center", x:decoX.toFixed(5), y:decoY.toFixed(5),
+    opacity:String(opacity), margin:".03", [decoMode === "logo" ? "width" : "size"]:String(size)});
+  if (decoMode === "text"){
+    params.set("font", $("deco-font").value);
+    params.set("color", $("deco-color").value);
+    params.set("background", $("deco-no-background").checked ? "none" : $("deco-background").value);
+  }
+  let url = `/api/jobs/${job}/decorate/${decoMode}?${params}`;
   let body, headers = {};
   if (decoMode === "logo"){
     const file = $("deco-logo").files[0];
