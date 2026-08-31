@@ -264,20 +264,8 @@
                   letter-spacing:.12em;text-transform:uppercase}
   .section-head{max-width:640px;margin-bottom:22px}
   .section-head h2{margin-bottom:7px}
-  .feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .feature{padding:20px;border:1px solid var(--line);border-radius:13px;background:#FAFAFB}
-  .feature-icon{display:grid;place-items:center;width:36px;height:36px;margin-bottom:14px;
-                border-radius:10px;background:var(--primary-soft);color:var(--primary);
-                font-weight:750;font-size:16px}
-  .feature h3{margin:0 0 6px;font-size:14px}
-  .feature p{margin:0;color:var(--ink-soft);font-size:12.5px;line-height:1.65}
-  .steps-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:8px}
-  .mini-step{position:relative;padding:8px 28px 8px 0}
-  .mini-step:not(:last-child)::after{content:"→";position:absolute;right:13px;top:10px;color:#B3B3C0}
   .step-no{display:block;margin-bottom:8px;color:var(--primary);font-size:11px;font-weight:750;
            letter-spacing:.08em}
-  .mini-step h3{margin:0 0 5px;font-size:14px}
-  .mini-step p{margin:0;color:var(--ink-soft);font-size:12.5px}
   .trust-strip{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
   .trust-strip span{padding:7px 11px;border:1px solid var(--line);border-radius:999px;
                     color:var(--ink-soft);background:#FAFAFB;font-size:11.5px}
@@ -320,9 +308,6 @@
     .batch-head button{margin-top:10px}
     .batch-item{grid-template-columns:minmax(0,1fr);gap:9px}
     .batch-actions{justify-content:flex-start}
-    .feature-grid,.steps-grid{grid-template-columns:1fr}
-    .mini-step{padding:8px 0 18px}
-    .mini-step:not(:last-child)::after{display:none}
     .wechat{grid-template-columns:1fr;text-align:center}
     .wechat-copy .wechat-name{justify-content:center}
     .wechat-qr{margin:0 auto}
@@ -523,63 +508,7 @@
     </div>
   </div>
 
-  <!-- ==================== 说明 ==================== -->
-
-  <div class="card prose">
-    <div class="section-head">
-      <p class="section-kicker" data-zh="专为导出件设计" data-en="Built for exports">专为导出件设计</p>
-      <h2 data-zh="少做一步手工，多一层放心"
-          data-en="Less manual work, more confidence">少做一步手工，多一层放心</h2>
-      <p data-zh="不是简单地盖一块白色矩形，而是先判断水印的真实位置，再根据页面背景进行修复。"
-         data-en="It does not simply cover the corner with a white rectangle. It first locates the real badge, then repairs it to match the page background.">不是简单地盖一块白色矩形，而是先判断水印的真实位置，再根据页面背景进行修复。</p>
-    </div>
-    <div class="feature-grid">
-      <div class="feature">
-        <span class="feature-icon">◎</span>
-        <h3 data-zh="自动检测" data-en="Automatic detection">自动检测</h3>
-        <p data-zh="对比多页相同位置，识别反复出现的固定角标，不依赖一张写死的模板图。" data-en="Compares repeated positions across pages to find the fixed badge without relying on one hard-coded template.">对比多页相同位置，识别反复出现的固定角标，不依赖一张写死的模板图。</p>
-      </div>
-      <div class="feature">
-        <span class="feature-icon">◇</span>
-        <h3 data-zh="精确修复" data-en="Precise repair">精确修复</h3>
-        <p data-zh="根据纯色、渐变或复杂背景选择合适的修复方式，避免留下突兀的白块。" data-en="Chooses the right repair for flat, gradient or complex backgrounds, avoiding an obvious white patch.">根据纯色、渐变或复杂背景选择合适的修复方式，避免留下突兀的白块。</p>
-      </div>
-      <div class="feature">
-        <span class="feature-icon">✓</span>
-        <h3 data-zh="处理后复核" data-en="Verified output">处理后复核</h3>
-        <p data-zh="重新打开输出文件检查页数和像素，发现异常就停止，不拿你的文件冒险。" data-en="Reopens the output to verify pages and pixels. If anything looks wrong, it stops instead of risking your file.">重新打开输出文件检查页数和像素，发现异常就停止，不拿你的文件冒险。</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="card prose">
-    <h2 data-zh="它只处理 NotebookLM 导出的文件"
-        data-en="It only handles files exported from NotebookLM">它只处理 NotebookLM 导出的文件</h2>
-    <p data-zh-html="这个工具是照着 NotebookLM 导出件右下角那个固定角标做的——就是每页同一位置、
-       写着「NotebookLM」或「Gemini Notebook」的那一小块。<b>别的水印它不认。</b>"
-       data-en-html="This tool is built for the fixed badge in the bottom-right corner of NotebookLM
-       exports — the small mark reading “NotebookLM” or “Gemini Notebook” that sits at the same spot
-       on every page. <b>It does not recognise other watermarks.</b>">它只认 NotebookLM 导出件右下角那个固定角标。</p>
-    <div class="grid2">
-      <div>
-        <h3 data-zh="可以扔进来" data-en="Bring these">可以扔进来</h3>
-        <ul>
-          <li data-zh="NotebookLM 导出的 PDF" data-en="PDFs exported from NotebookLM">NotebookLM 导出的 PDF</li>
-          <li data-zh="NotebookLM 导出的 PPTX（幻灯片）" data-en="PPTX slide decks exported from NotebookLM">NotebookLM 导出的 PPTX</li>
-        </ul>
-      </div>
-      <div>
-        <h3 data-zh="做不了" data-en="Not these">做不了</h3>
-        <ul>
-          <li data-zh="铺满整页的斜纹水印" data-en="Full-page diagonal watermarks">铺满整页的斜纹水印</li>
-          <li data-zh="别家工具加的、位置不固定的水印" data-en="Watermarks from other tools, or ones that move around">位置不固定的水印</li>
-          <li data-zh="老的 .ppt 格式，请先另存为 .pptx" data-en="The old .ppt format — save as .pptx first">老的 .ppt 格式</li>
-        </ul>
-      </div>
-    </div>
-    <p class="note" data-zh="拿不准的话，直接扔进来试试。认不出来它会直接告诉你「没找到水印」，不会乱改你的文件。"
-       data-en="Not sure? Just try it. If it cannot find the badge it says so and stops — it will not guess and alter your file.">拿不准就直接扔进来试试——认不出来它会直接说「没找到水印」，不会乱改。</p>
-  </div>
+  <!-- ==================== 反馈与关联项目 ==================== -->
 
   <div class="card prose">
     <h2 data-zh="反馈与其他小东西" data-en="Feedback and other small things">反馈与其他小东西</h2>
@@ -645,6 +574,27 @@
       </div>
       <h3 data-zh="文件要求" data-en="File requirements">文件要求</h3>
       <p data-zh="仅支持 NotebookLM 导出的 PDF / PPTX。每批最多 10 个，单个最大 100 MB，单批总计不超过 300 MB。" data-en="NotebookLM PDF / PPTX exports only. Up to 10 files per batch, 100 MB per file, and 300 MB total.">仅支持 NotebookLM 导出的 PDF / PPTX。每批最多 10 个，单个最大 100 MB，单批总计不超过 300 MB。</p>
+      <h3 data-zh="为什么处理效果更稳" data-en="Why the result is more reliable">为什么处理效果更稳</h3>
+      <p data-zh="它不是简单盖一块白色矩形，而是先定位水印，再按页面原有背景修复。" data-en="It does not cover the corner with a white rectangle. It locates the badge first, then repairs it to match the page background.">它不是简单盖一块白色矩形，而是先定位水印，再按页面原有背景修复。</p>
+      <div class="info-steps">
+        <div class="info-step"><strong data-zh="自动检测" data-en="Automatic detection">自动检测</strong><p data-zh="对比多页相同位置，识别反复出现的固定角标。" data-en="Compares the same area across pages to identify the repeated badge.">对比多页相同位置，识别反复出现的固定角标。</p></div>
+        <div class="info-step"><strong data-zh="精确修复" data-en="Precise repair">精确修复</strong><p data-zh="根据纯色、渐变或复杂背景选择合适的修复方式。" data-en="Selects a suitable repair for flat, gradient or complex backgrounds.">根据纯色、渐变或复杂背景选择合适的修复方式。</p></div>
+        <div class="info-step"><strong data-zh="处理后复核" data-en="Verified output">处理后复核</strong><p data-zh="重新打开输出文件检查，发现异常就停止。" data-en="Reopens and checks the output, stopping if anything looks wrong.">重新打开输出文件检查，发现异常就停止。</p></div>
+      </div>
+      <h3 data-zh="适用范围" data-en="Supported scope">适用范围</h3>
+      <p data-zh-html="专门处理 NotebookLM 导出件右下角、每页相同位置的固定角标。<b>其他类型的水印不会尝试修改。</b>" data-en-html="Built specifically for the fixed bottom-right badge repeated across NotebookLM exports. <b>Other watermark types are left untouched.</b>">专门处理 NotebookLM 导出件右下角、每页相同位置的固定角标。</p>
+      <div class="grid2">
+        <div><h3 data-zh="可以处理" data-en="Supported">可以处理</h3><ul>
+          <li data-zh="NotebookLM 导出的 PDF" data-en="PDFs exported from NotebookLM">NotebookLM 导出的 PDF</li>
+          <li data-zh="NotebookLM 导出的 PPTX（幻灯片）" data-en="PPTX decks exported from NotebookLM">NotebookLM 导出的 PPTX（幻灯片）</li>
+        </ul></div>
+        <div><h3 data-zh="不能处理" data-en="Not supported">不能处理</h3><ul>
+          <li data-zh="铺满整页的斜纹水印" data-en="Full-page diagonal watermarks">铺满整页的斜纹水印</li>
+          <li data-zh="其他工具添加的、位置不固定的水印" data-en="Watermarks from other tools or ones that move around">其他工具添加的、位置不固定的水印</li>
+          <li data-zh="老的 .ppt 格式，请先另存为 .pptx" data-en="Old .ppt files — save them as .pptx first">老的 .ppt 格式，请先另存为 .pptx</li>
+        </ul></div>
+      </div>
+      <p class="note" data-zh="拿不准可以直接试试；识别不到时会提示“没找到水印”，不会乱改文件。" data-en="Not sure? Try it. If the badge is not detected, it stops and tells you instead of guessing.">拿不准可以直接试试；识别不到时会提示“没找到水印”，不会乱改文件。</p>
     </div>
   </div>
 </dialog>
