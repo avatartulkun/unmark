@@ -282,6 +282,7 @@
   .domain-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;width:100%;margin-top:5px;
               color:var(--ink-soft);font-size:13px;line-height:1.35;white-space:nowrap}
   .domain-row.meanings{margin-top:2px;color:var(--ink);font-size:14px;font-weight:750}
+  html[lang="en"] .domain-row.meanings{display:none}
   @media (hover:hover) and (pointer:fine){
     #drop:hover{border-color:var(--primary);background:var(--primary-soft)}
     .links a:hover{transform:translateY(-2px)}
@@ -610,11 +611,11 @@
   <p id="foot-line"><!--FOOT_NOTE--></p>
   <p class="row"><span data-zh="unmark · 小产品实验室" data-en="unmark · Tiny Lab">unmark · 小产品实验室</span></p>
   <div class="domain-memory">
-    <p data-zh="域名助记，换台电脑也能找到" data-en="Remember the domain and find it on any computer">域名助记，换台电脑也能找到</p>
-    <div class="domain-guide" aria-label="Domain mnemonic">
+    <p data-zh="域名助记，换台电脑也能找到" data-en="Domain breakdown">域名助记，换台电脑也能找到</p>
+    <div class="domain-guide" aria-label="Domain breakdown">
       <span class="domain-name">unmark.tinylabpro.com</span>
       <div class="domain-row"><span>unmark</span><span>tiny</span><span>lab</span><span>pro</span></div>
-      <div class="domain-row meanings"><span data-zh="去水印" data-en="remove">去水印</span><span data-zh="小" data-en="tiny">小</span><span data-zh="实验室" data-en="lab">实验室</span><span data-zh="专业" data-en="pro">专业</span></div>
+      <div class="domain-row meanings"><span data-zh="去水印" data-en="unmark">去水印</span><span data-zh="小" data-en="tiny">小</span><span data-zh="实验室" data-en="lab">实验室</span><span data-zh="专业" data-en="pro">专业</span></div>
     </div>
   </div>
 </footer>
