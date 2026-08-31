@@ -55,9 +55,10 @@
                        border-radius:3px;background:#8888FF;box-shadow:8px 8px 0 #5B5BD6}
   header .tag{color:rgba(255,255,255,.45);font-size:12px}
   .topnav{display:flex;align-items:center;gap:24px}
-  .topnav a{color:rgba(255,255,255,.62);font-size:13px;text-decoration:none;
-            transition:color 160ms ease}
-  .topnav a:hover{color:#fff}
+  .topnav a,.info-nav{color:rgba(255,255,255,.62);font-size:13px;text-decoration:none;
+                      transition:color 160ms ease}
+  .info-nav{padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+  .topnav a:hover,.info-nav:hover:not(:disabled){color:#fff;background:transparent;border-color:transparent;transform:none}
   header h1{max-width:720px;margin:0 0 18px;font-size:clamp(34px,5vw,54px);
             line-height:1.12;font-weight:720;letter-spacing:-.045em}
   header p{margin:0;color:rgba(255,255,255,.66);max-width:620px;font-size:17px;line-height:1.75}
@@ -265,6 +266,12 @@
   .copy-wallet{flex:0 0 auto;padding:9px 12px;color:var(--primary);font-size:11.5px;font-weight:700}
   .crypto-warning{display:block;margin-top:8px;color:var(--err);font-size:10.5px}
   .support-note{margin:16px 0 0;color:var(--ink-soft);font-size:11.5px;text-align:center}
+  .info-modal{width:min(680px,calc(100% - 32px))}
+  .info-modal .support-shell{padding:28px}.info-modal .support-head{padding-bottom:17px;border-bottom:1px solid var(--line)}
+  .info-body{padding-top:18px}.info-body h3{margin:18px 0 5px;font-size:14px}.info-body p{margin:0 0 10px;color:var(--ink-soft)}
+  .info-body ul{margin:8px 0 0;padding-left:20px;color:var(--ink-soft)}.info-body li{margin-bottom:7px}
+  .info-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.info-step{padding:15px;border:1px solid var(--line);border-radius:12px;background:#FAFAFB}
+  .info-step strong{display:block;margin:5px 0 4px;font-size:13px}.info-step p{margin:0;font-size:12px;line-height:1.6}
 
   .section-kicker{margin:0 0 7px;color:var(--primary);font-size:11px;font-weight:750;
                   letter-spacing:.12em;text-transform:uppercase}
@@ -308,7 +315,7 @@
     .topbar{margin-bottom:42px;gap:10px}
     .top-actions{gap:8px}
     .topnav{gap:8px}
-    .topnav a{display:none}
+    .topnav a,.info-nav{display:none}
     .support-nav{padding:8px 11px}
     .langs button{padding:7px 9px}
     header .tag{display:none}
@@ -334,6 +341,7 @@
     .decorate-grid{grid-template-columns:1fr 1fr}.decorate-grid .field:first-child{grid-column:1/-1}
     .deco-stage>img{width:100%;max-height:none}.enhance-intro{align-items:flex-start}
     .support-grid{grid-template-columns:1fr}.support-shell{padding:20px}
+    .info-steps{grid-template-columns:1fr}.info-modal .support-shell{padding:20px}
     .crypto-body{grid-template-columns:1fr}.crypto-qr{width:min(210px,100%);height:auto;margin:0 auto}
     .domain-memory{padding:15px}.domain-name{font-size:15px}.domain-words{font-size:11px}.domain-words strong{font-size:12px}
   }
@@ -356,8 +364,8 @@
       </div>
       <div class="top-actions">
         <nav class="topnav" aria-label="Primary">
-          <a href="#how" data-zh="使用方法" data-en="How it works">使用方法</a>
-          <a href="#privacy" data-zh="隐私与安全" data-en="Privacy">隐私与安全</a>
+          <button class="info-nav open-info" data-dialog="how-dialog" data-zh="使用方法" data-en="How it works">使用方法</button>
+          <button class="info-nav open-info" data-dialog="privacy-dialog" data-zh="隐私与安全" data-en="Privacy">隐私与安全</button>
           <a href="https://github.com/tinyproductlab/unmark" target="_blank" rel="noopener">GitHub</a>
           <button class="support-nav open-support" data-zh="支持项目" data-en="Support">支持项目</button>
         </nav>
@@ -531,33 +539,6 @@
 
   <!-- ==================== 说明 ==================== -->
 
-  <div class="card prose" id="how">
-    <div class="section-head">
-      <p class="section-kicker" data-zh="简单三步" data-en="Three simple steps">简单三步</p>
-      <h2 data-zh="从原文件到干净版本，只需片刻"
-          data-en="From original to clean copy in moments">从原文件到干净版本，只需片刻</h2>
-      <p data-zh="检测、修复和复核都自动完成，你只需要确认处理前后的效果。"
-         data-en="Detection, repair and verification happen automatically. You only need to review the before-and-after result.">检测、修复和复核都自动完成，你只需要确认处理前后的效果。</p>
-    </div>
-    <div class="steps-grid">
-      <div class="mini-step">
-        <span class="step-no">01</span>
-        <h3 data-zh="放入导出文件" data-en="Add your export">放入导出文件</h3>
-        <p data-zh="支持 NotebookLM 导出的 PDF 与 PPTX。" data-en="Supports PDF and PPTX files exported by NotebookLM.">支持 NotebookLM 导出的 PDF 与 PPTX。</p>
-      </div>
-      <div class="mini-step">
-        <span class="step-no">02</span>
-        <h3 data-zh="自动识别与修复" data-en="Detect and repair">自动识别与修复</h3>
-        <p data-zh="跨页识别固定角标，并仅修复命中的小块区域。" data-en="Finds the repeated corner badge and repairs only the detected area.">跨页识别固定角标，并仅修复命中的小块区域。</p>
-      </div>
-      <div class="mini-step">
-        <span class="step-no">03</span>
-        <h3 data-zh="对比并下载" data-en="Review and download">对比并下载</h3>
-        <p data-zh="查看局部与整页对比，确认后下载新文件。" data-en="Review close-up and full-page comparisons, then download the new file.">查看局部与整页对比，确认后下载新文件。</p>
-      </div>
-    </div>
-  </div>
-
   <div class="card prose">
     <div class="section-head">
       <p class="section-kicker" data-zh="专为导出件设计" data-en="Built for exports">专为导出件设计</p>
@@ -614,27 +595,6 @@
        data-en="Not sure? Just try it. If it cannot find the badge it says so and stops — it will not guess and alter your file.">拿不准就直接扔进来试试——认不出来它会直接说「没找到水印」，不会乱改。</p>
   </div>
 
-  <div class="card prose" id="privacy">
-    <p class="section-kicker" data-zh="隐私与安全" data-en="Privacy & safety">隐私与安全</p>
-    <h2 data-zh="你的文件，始终由你掌控" data-en="Your file stays under your control">你的文件，始终由你掌控</h2>
-    <ul>
-      <li data-zh-html="<b>原件永远不会被改动。</b>结果是一个新文件，你自己下载" data-en-html="<b>Your original is never modified.</b> The result is a new file for you to download">原件永远不会被改动</li>
-      <li data-zh-html="<b>只动水印那一小块</b>，页面其余部分逐个像素原样保留" data-en-html="<b>Only the badge itself is touched</b> — every other pixel on the page is left exactly as it was">只动水印那一小块</li>
-      <li data-zh-html="做完会<b>重新打开检查一遍</b>，确认没有动到不该动的地方" data-en-html="The result is <b>re-opened and checked</b> afterwards to confirm nothing else moved">做完会重新打开检查一遍</li>
-    </ul>
-    <p id="privacy-note"><!--PRIVACY_NOTE--></p>
-    <div id="local-hint"><!--LOCAL_HINT_OPEN-->
-    <p data-zh-html="想让文件完全不离开自己的电脑，也可以把它下载下来在本机跑，见下面的 GitHub。"
-       data-en-html="If you would rather the file never left your computer, you can also run it locally — see GitHub below.">想让文件完全不离开自己的电脑，也可以下载下来在本机跑。</p>
-    </div>
-    <div class="trust-strip">
-      <span data-zh="原件不改写" data-en="Original untouched">原件不改写</span>
-      <span data-zh="输出为新文件" data-en="New output file">输出为新文件</span>
-      <span data-zh="处理结果复核" data-en="Output verified">处理结果复核</span>
-      <span data-zh="开源 · MIT" data-en="Open source · MIT">开源 · MIT</span>
-    </div>
-  </div>
-
   <div class="card prose">
     <h2 data-zh="反馈与其他小东西" data-en="Feedback and other small things">反馈与其他小东西</h2>
     <p data-zh-html="有问题、有想加的功能，欢迎在 GitHub 提 issue；或者扫码关注微信公众号「小产品实验室」私信，回复更快。"
@@ -686,6 +646,43 @@
     </div>
   </div>
 </footer>
+
+<dialog class="support-modal info-modal" id="how-dialog" aria-labelledby="how-title">
+  <div class="support-shell">
+    <div class="support-head"><div><p class="section-kicker" data-zh="简单三步" data-en="Three simple steps">简单三步</p>
+      <h2 id="how-title" data-zh="使用方法" data-en="How it works">使用方法</h2>
+      <p data-zh="检测、修复和复核都会自动完成。" data-en="Detection, repair and verification happen automatically.">检测、修复和复核都会自动完成。</p></div>
+      <button class="support-close close-info" aria-label="Close">×</button></div>
+    <div class="info-body">
+      <div class="info-steps">
+        <div class="info-step"><span class="step-no">01</span><strong data-zh="放入导出文件" data-en="Add your export">放入导出文件</strong><p data-zh="选择 NotebookLM 导出的 PDF 或 PPTX；支持批量上传。" data-en="Choose a PDF or PPTX exported from NotebookLM; batch uploads are supported.">选择 NotebookLM 导出的 PDF 或 PPTX；支持批量上传。</p></div>
+        <div class="info-step"><span class="step-no">02</span><strong data-zh="自动识别与修复" data-en="Detect and repair">自动识别与修复</strong><p data-zh="跨页识别固定角标，仅修复命中的小块区域。" data-en="The repeated badge is detected across pages and only that small area is repaired.">跨页识别固定角标，仅修复命中的小块区域。</p></div>
+        <div class="info-step"><span class="step-no">03</span><strong data-zh="对比并导出" data-en="Review and export">对比并导出</strong><p data-zh="查看前后效果；PDF 还可添加 Logo 或文字并自由拖动位置。" data-en="Review the result; PDFs can also receive a freely positioned logo or custom text.">查看前后效果；PDF 还可添加 Logo 或文字并自由拖动位置。</p></div>
+      </div>
+      <h3 data-zh="文件要求" data-en="File requirements">文件要求</h3>
+      <p data-zh="仅支持 NotebookLM 导出的 PDF / PPTX。每批最多 10 个，单个最大 100 MB，单批总计不超过 300 MB。" data-en="NotebookLM PDF / PPTX exports only. Up to 10 files per batch, 100 MB per file, and 300 MB total.">仅支持 NotebookLM 导出的 PDF / PPTX。每批最多 10 个，单个最大 100 MB，单批总计不超过 300 MB。</p>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="support-modal info-modal" id="privacy-dialog" aria-labelledby="privacy-title">
+  <div class="support-shell">
+    <div class="support-head"><div><p class="section-kicker" data-zh="隐私与安全" data-en="Privacy & safety">隐私与安全</p>
+      <h2 id="privacy-title" data-zh="你的文件，始终由你掌控" data-en="Your file stays under your control">你的文件，始终由你掌控</h2></div>
+      <button class="support-close close-info" aria-label="Close">×</button></div>
+    <div class="info-body">
+      <ul>
+        <li data-zh-html="<b>原件永远不会被改动。</b>结果会作为一个新文件供你下载。" data-en-html="<b>Your original is never modified.</b> The result is provided as a new download.">原件永远不会被改动，结果是一个新文件。</li>
+        <li data-zh-html="<b>只修复水印所在的小块区域。</b>页面其他部分保持原样。" data-en-html="<b>Only the small watermark area is repaired.</b> The rest of every page remains untouched.">只修复水印所在的小块区域。</li>
+        <li data-zh-html="输出后会<b>重新打开并复核</b>，发现异常就停止导出。" data-en-html="The output is <b>reopened and verified</b>; export stops if a problem is found.">输出后会重新打开并复核。</li>
+      </ul>
+      <p id="privacy-note"><!--PRIVACY_NOTE--></p>
+      <div class="trust-strip">
+        <span data-zh="原件不改写" data-en="Original untouched">原件不改写</span><span data-zh="输出为新文件" data-en="New output file">输出为新文件</span><span data-zh="处理结果复核" data-en="Output verified">处理结果复核</span><span data-zh="开源 · MIT" data-en="Open source · MIT">开源 · MIT</span>
+      </div>
+    </div>
+  </div>
+</dialog>
 
 <dialog class="support-modal" id="support-dialog" aria-labelledby="support-title">
   <div class="support-shell">
@@ -1323,6 +1320,17 @@ $("deco-create").onclick = async () => {
   finally{ $("deco-create").disabled = false; }
 };
 $("deco-download").onclick = () => location.href = `/api/jobs/${job}/download?variant=decorated`;
+
+/* ---------- 使用方法 / 隐私说明 ---------- */
+document.querySelectorAll(".open-info").forEach(button => {
+  button.onclick = () => $(button.dataset.dialog).showModal();
+});
+document.querySelectorAll(".close-info").forEach(button => {
+  button.onclick = () => button.closest("dialog").close();
+});
+document.querySelectorAll(".info-modal").forEach(dialog => {
+  dialog.onclick = event => { if (event.target === dialog) dialog.close(); };
+});
 
 /* ---------- 支持项目 ---------- */
 document.querySelectorAll(".open-support").forEach(button => {

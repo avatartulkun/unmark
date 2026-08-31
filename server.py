@@ -293,8 +293,6 @@ def _render_index() -> str:
     ttl_zh = f"{ttl_min // 60} 小时" if ttl_min >= 60 else f"{ttl_min} 分钟"
     ttl_en = (f"{ttl_min // 60} hour{'s' if ttl_min // 60 != 1 else ''}"
               if ttl_min >= 60 else f"{ttl_min} minutes")
-    repo = "https://github.com/tinyproductlab/unmark"
-
     if PUBLIC_MODE:
         privacy_zh = (f"这是一个在线服务，文件会上传到服务器处理，单个最大 {limit_mb} MB。"
                       f"处理只在内存和临时目录里进行，原件与结果都在 {ttl_zh}后自动删除，"
@@ -316,13 +314,8 @@ def _render_index() -> str:
     def pair(zh: str, en: str) -> str:
         return f'<span data-zh="{escape(zh, quote=True)}" data-en="{escape(en, quote=True)}"></span>'
 
-    foot = (pair(foot_zh, foot_en)
-            + f' <a href="{repo}" target="_blank" rel="noopener"'
-              f' data-zh="源码与本地部署" data-en="Source and local deployment">源码与本地部署</a>')
-    # 本机版没必要再劝人「跑在本机」——那一整块只在公开部署时才有意义
-    local_hint = "" if PUBLIC_MODE else '<style>#local-hint{display:none}</style>'
+    foot = pair(foot_zh, foot_en)
     return (html.replace("<!--PRIVACY_NOTE-->", pair(privacy_zh, privacy_en))
-                .replace("<!--LOCAL_HINT_OPEN-->", local_hint)
                 .replace("<!--FOOT_NOTE-->", foot))
 
 

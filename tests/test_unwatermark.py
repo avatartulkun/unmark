@@ -349,19 +349,17 @@ def test_index_privacy_copy_matches_deployment_mode(monkeypatch) -> None:
     local = server_module._render_index()
     assert "不出这台电脑" in privacy_note(local) and "不联网" in privacy_note(local)
     assert "上传到服务器" not in privacy_note(local)
-    assert "#local-hint{display:none}" in local, "本机版不该再劝人「跑在本机」"
 
     monkeypatch.setattr(server_module, "PUBLIC_MODE", True)
     public = server_module._render_index()
     assert "上传到服务器" in privacy_note(public)
     assert "不出这台电脑" not in privacy_note(public)
     assert "自动删除" in privacy_note(public)     # 说了传上去，就得说什么时候删
-    assert "#local-hint{display:none}" not in public   # 给在意隐私的人一条退路
     assert "github.com/tinyproductlab/unmark" in public
 
     for html in (local, public):
         assert "<!--PRIVACY_NOTE-->" not in html and "<!--FOOT_NOTE-->" not in html
-        assert "<!--LOCAL_HINT_OPEN-->" not in html
+        assert "源码与本地部署" not in html and "Source and local deployment" not in html
 
 
 def test_every_visible_string_has_both_languages() -> None:
