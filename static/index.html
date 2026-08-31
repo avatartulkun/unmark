@@ -49,7 +49,7 @@
   /* 顶部 */
   header{position:relative;overflow:hidden;
          background:linear-gradient(118deg,#111936 0%,#1D2B67 55%,#373BC0 100%);
-         color:#fff;padding:28px 0 104px}
+         color:#fff;padding:28px 0 26px}
   header::after{content:"";position:absolute;inset:auto -10% -80% 35%;height:380px;
                 background:radial-gradient(circle,rgba(91,91,214,.28),transparent 66%);pointer-events:none}
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:58px}
@@ -79,7 +79,7 @@
   .chips span{position:relative;padding-left:18px;font-size:12.5px;color:rgba(255,255,255,.68)}
   .chips span::before{content:"✓";position:absolute;left:0;color:#9B9BFF;font-weight:700}
 
-  main{position:relative;margin-top:-84px;padding-bottom:28px}
+  main{position:relative;margin-top:18px;padding-bottom:28px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
         padding:28px;margin-bottom:18px;box-shadow:var(--shadow)}
   #step-pick,#step-run,#step-done{border-color:rgba(255,255,255,.7)}
@@ -288,7 +288,7 @@
   @media (max-width:620px){
     .pair{grid-template-columns:1fr}
     .wrap{padding:0 18px}
-    header{padding:22px 0 88px}
+    header{padding:22px 0 22px}
     .topbar{margin-bottom:42px;gap:10px}
     .top-actions{gap:8px}
     .topnav{gap:8px}
@@ -298,7 +298,7 @@
     header h1{font-size:34px}
     header p{font-size:15px}
     .chips{gap:9px 16px;margin-top:22px}
-    main{margin-top:-68px}
+    main{margin-top:14px}
     .card{padding:18px;border-radius:15px}
     #drop{padding:42px 18px}
     #step-run{padding:24px 20px}
