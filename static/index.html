@@ -277,9 +277,11 @@
   .domain-memory{margin-top:20px;padding:18px 20px;border:1px solid var(--line);border-radius:13px;
                  background:#F0F1F5;color:var(--ink)}
   .domain-memory p{margin:0 0 4px;color:var(--ink-soft);font-size:12px}
-  .domain-name{display:block;font:750 17px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
-  .domain-words{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;max-width:430px;margin-top:7px;
-                color:var(--ink-soft);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:center}
+  .domain-name{display:block;font:750 17px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+  /* 按 unmark. / tiny / lab / pro 的真实字符宽度对齐；.com 不参与助记。 */
+  .domain-words{display:grid;grid-template-columns:7ch 4ch 3ch 3ch;width:max-content;margin-top:7px;
+                color:var(--ink-soft);font:17px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:center}
+  .domain-words>span{font-size:13px}.domain-words>span:first-child{padding-right:1.3ch}
   .domain-words strong{color:var(--ink);font-family:inherit;font-size:14px}
   @media (hover:hover) and (pointer:fine){
     #drop:hover{border-color:var(--primary);background:var(--primary-soft)}
@@ -318,7 +320,7 @@
     .deco-stage>img{width:100%;max-height:none}.hero-advantage{align-items:flex-start;padding:13px 14px}
     .support-shell{padding:20px}
     .info-steps{grid-template-columns:1fr}.info-modal .support-shell{padding:20px}
-    .domain-memory{padding:15px}.domain-name{font-size:15px}.domain-words{font-size:11px}.domain-words strong{font-size:12px}
+    .domain-memory{padding:15px}.domain-name,.domain-words{font-size:15px}.domain-words>span{font-size:11px}.domain-words strong{font-size:12px}
   }
   @media (prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
