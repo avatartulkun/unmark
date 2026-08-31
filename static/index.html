@@ -57,6 +57,14 @@
   header h1{max-width:720px;margin:0 0 18px;font-size:clamp(34px,5vw,54px);
             line-height:1.12;font-weight:720;letter-spacing:-.045em}
   header p{margin:0;color:rgba(255,255,255,.66);max-width:620px;font-size:17px;line-height:1.75}
+  .hero-advantage{display:flex;align-items:center;gap:13px;max-width:720px;margin-top:20px;padding:14px 17px;
+                  border:1px solid rgba(255,255,255,.2);border-radius:14px;
+                  background:linear-gradient(110deg,rgba(125,125,255,.24),rgba(255,255,255,.09));
+                  box-shadow:0 14px 38px rgba(8,13,40,.22);backdrop-filter:blur(8px)}
+  .hero-advantage-icon{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:12px;
+                       background:#fff;color:var(--primary);font-size:20px;box-shadow:0 7px 20px rgba(0,0,0,.16)}
+  .hero-advantage strong{display:block;color:#fff;font-size:14px;line-height:1.45}
+  .hero-advantage span:last-child{display:block;margin-top:3px;color:rgba(255,255,255,.72);font-size:12.5px;line-height:1.55}
   .chips{display:flex;flex-wrap:wrap;gap:18px;margin-top:26px}
   .chips span{position:relative;padding-left:18px;font-size:12.5px;color:rgba(255,255,255,.68)}
   .chips span::before{content:"✓";position:absolute;left:0;color:#9B9BFF;font-weight:700}
@@ -79,11 +87,6 @@
   .upload-rules{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:14px}
   .upload-rules span{padding:4px 8px;border:1px solid var(--line);border-radius:999px;
                      background:#fff;color:var(--ink-soft);font-size:11px}
-  .enhance-intro{display:flex;align-items:center;gap:14px;margin-top:14px;padding:13px 15px;
-                 border:1px solid #D9D7FF;border-radius:12px;background:#F8F8FF;text-align:left}
-  .enhance-intro-icon{display:grid;place-items:center;flex:0 0 38px;height:38px;border-radius:11px;
-                      background:var(--primary);color:#fff;font-size:19px}
-  .enhance-intro strong{display:block;font-size:13px}.enhance-intro span:last-child{display:block;color:var(--ink-soft);font-size:11.5px}
 
   button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#fff;
          color:var(--ink);padding:10px 17px;cursor:pointer;
@@ -312,7 +315,7 @@
     .wechat-copy .wechat-name{justify-content:center}
     .wechat-qr{margin:0 auto}
     .decorate-grid{grid-template-columns:1fr 1fr}.decorate-grid .field:first-child{grid-column:1/-1}
-    .deco-stage>img{width:100%;max-height:none}.enhance-intro{align-items:flex-start}
+    .deco-stage>img{width:100%;max-height:none}.hero-advantage{align-items:flex-start;padding:13px 14px}
     .support-shell{padding:20px}
     .info-steps{grid-template-columns:1fr}.info-modal .support-shell{padding:20px}
     .domain-memory{padding:15px}.domain-name{font-size:15px}.domain-words{font-size:11px}.domain-words strong{font-size:12px}
@@ -350,6 +353,11 @@
         data-en="Remove NotebookLM watermarks, cleanly">干净地去掉 NotebookLM 水印</h1>
     <p data-zh="自动识别 PDF 与 PPTX 右下角的固定角标，只修复水印覆盖的区域。无需学习复杂软件，放入文件即可得到干净版本。"
        data-en="Automatically detects the fixed corner badge in PDF and PPTX exports and repairs only the covered area. No complex editor — simply add your file and get a clean copy.">自动识别 PDF 与 PPTX 右下角的固定角标，只修复水印覆盖的区域。无需学习复杂软件，放入文件即可得到干净版本。</p>
+    <div class="hero-advantage">
+      <span class="hero-advantage-icon">✦</span>
+      <div><strong data-zh="不止去水印，还能添加你自己的标识" data-en="More than removal — add your own identity">不止去水印，还能添加你自己的标识</strong>
+        <span data-zh="PDF 清理完成后，可添加 Logo 或自定义文字，自由拖到页面任意位置，再导出增强版。" data-en="After cleaning a PDF, add a logo or custom text, drag it anywhere on the page, and export an enhanced copy.">PDF 清理完成后，可添加 Logo 或自定义文字，自由拖到页面任意位置，再导出增强版。</span></div>
+    </div>
     <div class="chips">
       <span data-zh="PDF 与 PPTX" data-en="PDF and PPTX">PDF 与 PPTX</span>
       <span data-zh="原件不会被改动" data-en="Your original stays untouched">原件不会被改动</span>
@@ -376,11 +384,6 @@
       </div>
     </div>
     <input type="file" id="file" accept="application/pdf,.pdf,.pptx" multiple class="hide">
-    <div class="enhance-intro">
-      <span class="enhance-intro-icon">✦</span>
-      <div><strong data-zh="不仅能去水印，还能添加自己的标识" data-en="Remove the badge, then add your own mark">不仅能去水印，还能添加自己的标识</strong>
-        <span data-zh="PDF 清理完成后，可添加 Logo 或自定义文字，自由拖到页面任意位置，再导出增强版。" data-en="After cleaning a PDF, add a logo or custom text, drag it anywhere on the page, and export an enhanced copy.">PDF 清理完成后，可添加 Logo 或自定义文字，自由拖到页面任意位置，再导出增强版。</span></div>
-    </div>
   </div>
 
   <!-- 批量任务 -->
