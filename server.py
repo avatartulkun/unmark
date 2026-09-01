@@ -52,13 +52,13 @@ def _env_int(name: str, default: int) -> int:
 
 
 # 公网部署时这些值全部可以用环境变量压低；本机自用保持默认即可。
-MAX_UPLOAD_BYTES = _env_int("UNMARK_MAX_UPLOAD_MB", 100) * 1024 * 1024
-"""单个上传的大小上限。整页位图的 PDF 很占地方，100 MB 需要充足内存。"""
+MAX_UPLOAD_BYTES = _env_int("UNMARK_MAX_UPLOAD_MB", 50) * 1024 * 1024
+"""单个上传的大小上限。公开服务保守默认 50 MB，降低内存与带宽峰值。"""
 
-MAX_CONCURRENT_JOBS = _env_int("UNMARK_MAX_CONCURRENT", 2)
+MAX_CONCURRENT_JOBS = _env_int("UNMARK_MAX_CONCURRENT", 1)
 """同时真正在跑的任务数。超出的排队等待——限制的是内存峰值，不是请求数。"""
 
-MAX_LIVE_JOBS = _env_int("UNMARK_MAX_LIVE_JOBS", 24)
+MAX_LIVE_JOBS = _env_int("UNMARK_MAX_LIVE_JOBS", 12)
 """内存里同时保留的任务数（含已完成待下载的）。每个任务在磁盘上占两份 PDF。"""
 
 RATE_LIMIT_JOBS = _env_int("UNMARK_RATE_LIMIT", 12)

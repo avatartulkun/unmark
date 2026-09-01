@@ -229,7 +229,7 @@ curl -fsSL https://raw.githubusercontent.com/tinyproductlab/unmark/main/deploy/s
 `docker-compose.yml` 里应用容器**不对外映射端口**，只有隧道容器连得到它，
 宿主机和局域网都碰不到。
 
-要注意上传带宽：处理后的文件可能比原件大，100 MB 进、输出可能更大，回传走的是家庭宽带的上行。
+要注意上传带宽：处理后的文件可能比原件大，50 MB 进、输出可能更大，回传走的是家庭宽带的上行。
 几个人偶尔用没问题，量大了会占满你自己的上传。
 
 仓库里附了 `Dockerfile` 和 `fly.toml`（Fly.io）。**注意这时 PDF 会上传到服务器**，
@@ -239,9 +239,9 @@ curl -fsSL https://raw.githubusercontent.com/tinyproductlab/unmark/main/deploy/s
 
 | 变量 | 默认 | 作用 |
 |---|---|---|
-| `UNMARK_MAX_UPLOAD_MB` | `100` | 单个文件大小上限（PDF / PPTX 共用） |
-| `UNMARK_MAX_CONCURRENT` | `2` | 同时真正在跑的任务数，直接决定内存峰值 |
-| `UNMARK_MAX_LIVE_JOBS` | `24` | 内存中保留的任务数，超出从最旧的已结束任务开始丢 |
+| `UNMARK_MAX_UPLOAD_MB` | `50` | 单个文件大小上限（PDF / PPTX 共用） |
+| `UNMARK_MAX_CONCURRENT` | `1` | 同时真正在跑的任务数，直接决定内存峰值 |
+| `UNMARK_MAX_LIVE_JOBS` | `12` | 内存中保留的任务数，超出从最旧的已结束任务开始丢 |
 | `UNMARK_RATE_LIMIT` | `12` | 每个来源在窗口内可发起的任务数 |
 | `UNMARK_RATE_WINDOW_MIN` | `60` | 限流窗口（分钟） |
 | `UNMARK_JOB_TTL_MIN` | `120` | 任务连同临时文件的保留时长 |

@@ -25,7 +25,7 @@
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
-  body{margin:0;background:var(--bg);color:var(--ink);
+  body{margin:0;background:radial-gradient(900px 340px at 84% -160px,rgba(79,70,229,.09),transparent 72%),var(--bg);color:var(--ink);
        font:15px/1.65 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",
             "Helvetica Neue","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
   a{color:var(--primary);text-underline-offset:3px}
@@ -49,21 +49,22 @@
   /* 顶部 */
   header{position:relative;overflow:hidden;
          background:linear-gradient(118deg,#111936 0%,#1D2B67 55%,#373BC0 100%);
-         color:#fff;padding:28px 0 26px}
+         color:#fff;padding:24px 0 24px}
   header::after{content:"";position:absolute;inset:auto -10% -80% 35%;height:380px;
                 background:radial-gradient(circle,rgba(91,91,214,.28),transparent 66%);pointer-events:none}
-  .topbar{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:58px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:42px}
   .top-actions{display:flex;align-items:center;gap:16px}
   header .brand{display:flex;align-items:center;gap:10px;margin:0}
   header .mark{font:750 18px/1 inherit;letter-spacing:-.02em}
   header .mark::before{content:"";display:inline-block;width:9px;height:9px;margin-right:9px;
                        border-radius:3px;background:#8888FF;box-shadow:8px 8px 0 #5B5BD6}
   header .tag{color:rgba(255,255,255,.45);font-size:12px}
-  .topnav{display:flex;align-items:center;gap:24px}
-  .topnav a,.info-nav{color:rgba(255,255,255,.62);font-size:13px;text-decoration:none;
+  .topnav{display:flex;align-items:center;gap:6px}
+  .topnav a,.info-nav{color:rgba(255,255,255,.72);font-size:13px;text-decoration:none;
                       transition:color 160ms ease}
   .info-nav{padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
-  .topnav a:hover,.info-nav:hover:not(:disabled){color:#fff;background:transparent;border-color:transparent;transform:none}
+  .topnav a{padding:7px 10px;border-radius:999px}
+  .topnav a:hover,.info-nav:hover:not(:disabled){color:#fff;background:rgba(255,255,255,.12);border-color:transparent;transform:none}
   header h1{max-width:720px;margin:0 0 18px;font-size:clamp(34px,5vw,54px);
             line-height:1.12;font-weight:720;letter-spacing:-.045em}
   header p{margin:0;color:rgba(255,255,255,.66);max-width:620px;font-size:17px;line-height:1.75}
@@ -79,7 +80,7 @@
   .chips span{position:relative;padding-left:18px;font-size:12.5px;color:rgba(255,255,255,.68)}
   .chips span::before{content:"✓";position:absolute;left:0;color:#9B9BFF;font-weight:700}
 
-  main{position:relative;margin-top:18px;padding-bottom:28px}
+  main{position:relative;margin-top:14px;padding-bottom:22px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
         padding:28px;margin-bottom:18px;box-shadow:var(--shadow)}
   #step-pick,#step-run,#step-done{border-color:rgba(255,255,255,.7)}
@@ -372,12 +373,12 @@
     <div id="drop">
       <h2 data-zh="选择文件，开始去水印"
           data-en="Choose a file to get started">选择文件，开始去水印</h2>
-      <p data-zh="拖放或点击选择 NotebookLM 导出的 PDF / PPTX · 最大 100 MB"
-         data-en="Drop or choose a PDF / PPTX exported from NotebookLM · up to 100 MB">拖放或点击选择 NotebookLM 导出的 PDF / PPTX · 最大 100 MB</p>
+      <p data-zh="拖放或点击选择 NotebookLM 导出的 PDF / PPTX · 最大 50 MB"
+         data-en="Drop or choose a PDF / PPTX exported from NotebookLM · up to 50 MB">拖放或点击选择 NotebookLM 导出的 PDF / PPTX · 最大 50 MB</p>
       <div class="upload-rules" aria-label="Upload limits">
         <span data-zh="每批最多 10 个" data-en="Up to 10 per batch">每批最多 10 个</span>
-        <span data-zh="单个最大 100 MB" data-en="100 MB per file">单个最大 100 MB</span>
-        <span data-zh="单批总计不超过 300 MB" data-en="300 MB total per batch">单批总计不超过 300 MB</span>
+        <span data-zh="单个最大 50 MB" data-en="50 MB per file">单个最大 50 MB</span>
+        <span data-zh="单批总计不超过 150 MB" data-en="150 MB total per batch">单批总计不超过 150 MB</span>
         <span data-zh="仅支持 PDF / PPTX" data-en="PDF / PPTX only">仅支持 PDF / PPTX</span>
       </div>
     </div>
@@ -573,7 +574,7 @@
         <div class="info-step"><span class="step-no">03</span><strong data-zh="对比并导出" data-en="Review and export">对比并导出</strong><p data-zh="查看前后效果；PDF 还可添加 Logo 或文字并自由拖动位置。" data-en="Review the result; PDFs can also receive a freely positioned logo or custom text.">查看前后效果；PDF 还可添加 Logo 或文字并自由拖动位置。</p></div>
       </div>
       <h3 data-zh="文件要求" data-en="File requirements">文件要求</h3>
-      <p data-zh="仅支持 NotebookLM 导出的 PDF / PPTX。每批最多 10 个，单个最大 100 MB，单批总计不超过 300 MB。" data-en="NotebookLM PDF / PPTX exports only. Up to 10 files per batch, 100 MB per file, and 300 MB total.">仅支持 NotebookLM 导出的 PDF / PPTX。每批最多 10 个，单个最大 100 MB，单批总计不超过 300 MB。</p>
+      <p data-zh="仅支持 NotebookLM 导出的 PDF / PPTX。每批最多 10 个，单个最大 50 MB，单批总计不超过 150 MB。" data-en="NotebookLM PDF / PPTX exports only. Up to 10 files per batch, 50 MB per file, and 150 MB total.">仅支持 NotebookLM 导出的 PDF / PPTX。每批最多 10 个，单个最大 50 MB，单批总计不超过 150 MB。</p>
       <h3 data-zh="为什么处理效果更稳" data-en="Why the result is more reliable">为什么处理效果更稳</h3>
       <p data-zh="它不是简单盖一块白色矩形，而是先定位水印，再按页面原有背景修复。" data-en="It does not cover the corner with a white rectangle. It locates the badge first, then repairs it to match the page background.">它不是简单盖一块白色矩形，而是先定位水印，再按页面原有背景修复。</p>
       <div class="info-steps">
@@ -652,15 +653,15 @@ const T = {
   lost:         ["任务已丢失（可能已过期，请重新上传）", "Job is gone — it may have expired; please upload again"],
   pickFile:     ["请选择 PDF 或 PPTX 文件。", "Please choose a PDF or PPTX file."],
   tooMany:      ["每批最多选择 10 个文件。", "You can select up to 10 files per batch."],
-  tooLarge:     [name => `${name} 超过单个文件 100 MB 的限制。`, name => `${name} exceeds the 100 MB per-file limit.`],
-  batchTooLarge:["这一批文件总计超过 300 MB，请减少文件后重试。", "This batch exceeds 300 MB in total. Remove some files and try again."],
+  tooLarge:     [name => `${name} 超过单个文件 50 MB 的限制。`, name => `${name} exceeds the 50 MB per-file limit.`],
+  batchTooLarge:["这一批文件总计超过 150 MB，请减少文件后重试。", "This batch exceeds 150 MB in total. Remove some files and try again."],
   waitingUpload:["等待上传", "Waiting to upload"],
   uploading:    ["正在上传…", "Uploading…"],
   uploadFailed: ["上传失败", "Upload failed"],
   queued:       ["已提交，等待处理", "Submitted, waiting"],
   batchDone:    [n => `已完成 ${n} 个`, n => `${n} completed`],
   batchFailed:  [n => `失败 ${n} 个`, n => `${n} failed`],
-  batchFiles:   [n => `共 ${n} 个文件；服务器同时处理 2 个，其余自动排队`, n => `${n} files; 2 process at once and the rest queue automatically`],
+  batchFiles:   [n => `共 ${n} 个文件；服务器一次处理 1 个，其余自动排队`, n => `${n} files; 1 is processed at a time and the rest queue automatically`],
   viewResult:   ["查看", "Review"],
   downloadOne: ["下载", "Download"],
   backToBatch: ["返回批量列表", "Back to batch"],
@@ -783,9 +784,9 @@ function chooseFiles(files){
   if (files.length > 10) { alert(t("tooMany")); return; }
   const invalid = files.find(f => !/\.(pdf|pptx)$/i.test(f.name));
   if (invalid) { alert(t("pickFile")); return; }
-  const oversized = files.find(f => f.size > 100 * 1024 * 1024);
+  const oversized = files.find(f => f.size > 50 * 1024 * 1024);
   if (oversized) { alert(t("tooLarge", oversized.name)); return; }
-  if (files.reduce((sum, f) => sum + f.size, 0) > 300 * 1024 * 1024){
+  if (files.reduce((sum, f) => sum + f.size, 0) > 150 * 1024 * 1024){
     alert(t("batchTooLarge")); return;
   }
   startBatch(files);

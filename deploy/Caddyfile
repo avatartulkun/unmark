@@ -18,10 +18,10 @@ unmark.tinylabpro.com {
 		}
 	}
 
-	# 比应用自己的 100 MB 上限留一点余量：让应用返回它那句人话提示，
+	# 比应用自己的 50 MB 上限留一点余量：让应用返回它那句人话提示，
 	# 而不是在这一层被硬切断、前端只看到连接被重置。
 	request_body {
-		max_size 110MB
+		max_size 55MB
 	}
 
 	reverse_proxy app:8823 {
