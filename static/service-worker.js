@@ -1,5 +1,5 @@
 const CACHE = "unmark-shell-v1";
-const SHELL = ["/", "/manifest.webmanifest", "/assets/app-icon.svg", "/assets/app-icon-192.png", "/assets/app-icon-512.png"];
+const SHELL = ["/", "/manifest.webmanifest", "/assets/app-icon-192.png", "/assets/app-icon-512.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));

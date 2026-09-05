@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="unmark">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml">
+<link rel="icon" href="/assets/app-icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="/assets/app-icon-192.png">
 <style>
   :root{
@@ -55,9 +55,8 @@
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:42px}
   .top-actions{display:flex;align-items:center;gap:16px}
   header .brand{display:flex;align-items:center;gap:10px;margin:0}
+  header .brand-icon{width:42px;height:42px;border-radius:11px;object-fit:cover;background:#fff}
   header .mark{font:750 18px/1 inherit;letter-spacing:-.02em}
-  header .mark::before{content:"";display:inline-block;width:9px;height:9px;margin-right:9px;
-                       border-radius:3px;background:#8888FF;box-shadow:8px 8px 0 #5B5BD6}
   header .tag{color:rgba(255,255,255,.45);font-size:12px}
   .topnav{display:flex;align-items:center;gap:6px}
   .topnav a,.info-nav{color:rgba(255,255,255,.72);font-size:13px;text-decoration:none;
@@ -332,11 +331,12 @@
   <div class="wrap">
     <div class="topbar">
       <div class="brand">
-        <span class="mark">unmark</span>
-        <span class="tag" data-zh="小产品实验室" data-en="Tiny Lab">小产品实验室</span>
+        <img class="brand-icon" src="/assets/app-icon-192.png" alt="unmark">
+        <div><span class="mark">unmark</span><br><span class="tag" data-zh="小产品实验室" data-en="Tiny Lab">小产品实验室</span></div>
       </div>
       <div class="top-actions">
         <nav class="topnav" aria-label="Primary">
+          <a href="https://tinylabpro.com/" data-zh="全部工具" data-en="All tools">全部工具</a>
           <button class="info-nav open-info" data-dialog="how-dialog" data-zh="使用方法" data-en="How it works">使用方法</button>
           <button class="info-nav open-info" data-dialog="privacy-dialog" data-zh="隐私与安全" data-en="Privacy">隐私与安全</button>
           <a href="https://github.com/tinyproductlab/unmark" target="_blank" rel="noopener">GitHub</a>
