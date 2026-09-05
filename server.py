@@ -423,6 +423,18 @@ def create_app() -> FastAPI:
     def index() -> HTMLResponse:
         return HTMLResponse(_render_index())
 
+    # robots.txt 与 sitemap.xml：这个服务没有 StaticFiles 挂载，
+    # 每个静态文件都要显式给路由，否则放进 static/ 也取不到。
+    @app.get("/robots.txt", response_class=FileResponse)
+    def robots_txt() -> FileResponse:
+        return FileResponse(STATIC_DIR / "robots.txt", media_type="text/plain",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/sitemap.xml", response_class=FileResponse)
+    def sitemap_xml() -> FileResponse:
+        return FileResponse(STATIC_DIR / "sitemap.xml", media_type="application/xml",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/manifest.webmanifest", response_class=FileResponse)
     def web_manifest() -> FileResponse:
         return FileResponse(STATIC_DIR / "manifest.webmanifest",

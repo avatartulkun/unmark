@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://unmark.tinylabpro.com/sitemap.xml
